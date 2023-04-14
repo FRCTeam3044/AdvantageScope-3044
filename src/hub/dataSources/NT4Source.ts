@@ -274,12 +274,24 @@ export default class NT4Source extends LiveDataSource {
 
       // Start connection
       this.client.connect();
+      // TODO: Jsonify
+      this.client.publishTopic("/SmartDashboard/TargetLocation", "double[]");
+      this.client.publishTopic("/SmartDashboard/NavType", "string");
+      this.client.publishTopic("/SmartDashboard/ScoringNodes", "boolean[]");
+      this.client.publishTopic("/SmartDashboard/TargetNode", "double");
+      this.client.publishTopic("/AutoConfig/KeySetter", "string");
     }
   }
 
   stop() {
     super.stop();
     this.client?.disconnect();
+  }
+
+  publishValue(topic: string, value: unknown) {
+    if (this.client) {
+      this.client.addSample(topic, value);
+    }
   }
 
   /** Gets the name of the topic, depending on whether we're running in AdvantageKit mode. */

@@ -18,6 +18,8 @@ import TableController from "./tabControllers/TableController";
 import ThreeDimensionController from "./tabControllers/ThreeDimensionController";
 import TimelineVizController from "./tabControllers/TimelineVizController";
 import VideoController from "./tabControllers/VideoController";
+import ScoringNodesController from "./tabControllers/ScoringNodesController";
+import PIDTunerController from "./tabControllers/PIDTunerController";
 
 export default class Tabs {
   private VIEWER = document.getElementsByClassName("viewer")[0] as HTMLElement;
@@ -248,6 +250,15 @@ export default class Tabs {
       case TabType.Metadata:
         contentElement = this.CONTENT_TEMPLATES.children[13].cloneNode(true) as HTMLElement;
         controller = new MetadataController(contentElement);
+        break;
+      case TabType.ScoringNodes:
+        contentElement = this.CONTENT_TEMPLATES.children[5].cloneNode(true) as HTMLElement;
+        contentElement.appendChild(this.CONTENT_TEMPLATES.children[14].cloneNode(true));
+        controller = new ScoringNodesController(contentElement);
+        break;
+      case TabType.PIDTuner:
+        contentElement = this.CONTENT_TEMPLATES.children[15].cloneNode(true) as HTMLElement;
+        controller = new PIDTunerController(contentElement);
         break;
     }
 

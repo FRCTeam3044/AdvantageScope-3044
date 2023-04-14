@@ -1634,3 +1634,122 @@ table.metadata-table td.no-data {
     border-right: 1px solid #eee;
   }
 }
+
+.scoring-table {
+  position: absolute;
+  left: 0%;
+  width: 100%;
+  top: 0%;
+  height: 100%;
+  border-spacing: 10px;
+}
+
+td.hybrid {
+  background-color: #777777;
+}
+
+td.hybrid.scored {
+  background-color: #ffffff;
+}
+
+td.cone {
+  background-color: #ffda1e5d;
+}
+
+td.cone.scored {
+  background-color: #ffda1e;
+}
+
+td.cube {
+  background-color: #aa00ff4d;
+}
+
+td.cube.scored {
+  background-color: #aa00ff;
+}
+
+td.active {
+  background-color: #00ff08 !important;
+}
+
+.column-right {
+  float: right;
+  margin-right: 4%;
+  width: 30%;
+  max-width: 35%;
+}
+
+.column-right h2 {
+  margin-bottom: 5px;
+}
+
+.column-right table th {
+  padding-left: 8px;
+}
+
+.column-right input {
+  background-color: transparent;
+  border: none;
+  color: #222;
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.column-right button {
+  color: #fff;
+  width: 75px;
+  height: 30px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 14px;
+  border-radius: 5px;
+  margin: 20px 2px;
+}
+
+.column-right #refresh-button {
+  background-color: #c2a91b;
+}
+
+.column-right #refresh-button:hover {
+  background-color: #b89b17;
+}
+
+.column-right #refresh-button:active {
+  background-color: #a88b14;
+}
+
+.pid-tuning-canvas {
+  width: 65%;
+}
+
+select {
+  margin-bottom: 20px;
+  background-color: transparent;
+  border: 1px solid #222;
+  color: #222;
+  padding: 5px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .column-right input {
+    color: #fff;
+  }
+  select {
+    background-color: #222;
+    border: 1px solid #eee;
+    color: #fff;
+  }
+}
+
+.column-right table {
+  border: 1px solid #fff;
+  table-layout: fixed;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.column-right table td {
+  max-width: 0;
+  text-overflow: ellipsis;
+}
