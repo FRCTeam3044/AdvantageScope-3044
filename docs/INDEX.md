@@ -29,6 +29,7 @@ AdvantageScope supports many ways to view and analyze data, organized into tabs.
 - 🦾 [Mechanism](/docs/tabs/MECHANISM.md)
 - 🔵 [Points](/docs/tabs/POINTS.md)
 - 🔍 [Metadata](/docs/tabs/METADATA.md)
+- 🎛 [Tuner](/docs/tabs/TUNER.md)
 
 ## Other Links
 

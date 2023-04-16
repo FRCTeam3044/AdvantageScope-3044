@@ -1753,3 +1753,7 @@ select {
   max-width: 0;
   text-overflow: ellipsis;
 }
+
+.scoring-config {
+  display: none;
+}
