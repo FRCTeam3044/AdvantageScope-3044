@@ -342,10 +342,15 @@ export default class PIDTunerController implements TabController {
       td1.innerText = this.truncate(parameters[i][0], 26);
       let td2 = document.createElement("td");
       let input = document.createElement("input");
-      input.type = "number";
+      if (!isNaN(parameters[i][2])) {
+        input.type = "number";
+      } else {
+        input.type = "text";
+      }
+
       input.value = parameters[i][2];
       input.addEventListener("change", () => {
-        window.setNt4("/AutoConfig/KeySetter", parameters[i][1] + "," + input.value);
+        window.setNt4("/OxConfig/KeySetter", parameters[i][1] + "," + input.value);
       });
       td2.appendChild(input);
       tr.appendChild(td1);
@@ -355,7 +360,7 @@ export default class PIDTunerController implements TabController {
   }
 
   private reloadControllerList() {
-    let controllers = window.log.getString("NT:/AutoConfig/Classes", this.timestampRange[1], this.timestampRange[1]);
+    let controllers = window.log.getString("NT:/OxConfig/Classes", this.timestampRange[1], this.timestampRange[1]);
     console.log(controllers);
     this.CONTROLLER_DROPDOWN.innerHTML = "";
     if (controllers == null || controllers.values[0] == null) {
