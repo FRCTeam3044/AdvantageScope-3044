@@ -6,11 +6,12 @@ import { LogValueSetAny, LogValueSetNumber } from "../../shared/log/LogValueSets
 import TabType from "../../shared/TabType";
 import { convertWithPreset, UnitConversionPreset } from "../../shared/units";
 import { clampValue, cleanFloat, scaleValue, shiftColor } from "../../shared/util";
+import ThreeDimensionVisualizer from "../../shared/visualizers/ThreeDimensionVisualizer";
 import ScrollSensor from "../ScrollSensor";
 import { SelectionMode } from "../Selection";
 import TabController from "../TabController";
 
-export default class PIDTunerController implements TabController {
+export default class TunerController implements TabController {
   private MIN_ZOOM_TIME = 0.05;
   private ZOOM_BASE = 1.001;
   private MIN_AXIS_RANGE = 1e-5;
@@ -22,9 +23,9 @@ export default class PIDTunerController implements TabController {
   private CANVAS_CONTAINER: HTMLElement;
   private CANVAS: HTMLCanvasElement;
   private SCROLL_OVERLAY: HTMLElement;
-  private REFRESH_BUTTON: HTMLElement;
   private CONTROLLER_DROPDOWN: HTMLElement;
   private PARAMETER_TABLE: HTMLElement;
+  private MODE_DROPDOWN: HTMLElement;
 
   private LEFT_LIST: HTMLElement;
   private DISCRETE_LIST: HTMLElement;
@@ -36,6 +37,8 @@ export default class PIDTunerController implements TabController {
   private RIGHT_DRAG_TARGET: HTMLElement;
 
   private controllerList = [];
+  private modes: string[] = [];
+  private mode: string = "testing";
 
   private leftFields: {
     key: string;
@@ -91,16 +94,16 @@ export default class PIDTunerController implements TabController {
     this.RIGHT_DRAG_TARGET = content.getElementsByClassName("legend-right")[1] as HTMLElement;
 
     // tuner code
-    this.REFRESH_BUTTON = content.getElementsByClassName("refresh-button")[0] as HTMLElement;
     this.CONTROLLER_DROPDOWN = content.getElementsByClassName("controller-dropdown")[0] as HTMLElement;
     this.PARAMETER_TABLE = content.getElementsByClassName("tuning-table")[0] as HTMLElement;
+    this.MODE_DROPDOWN = content.getElementsByClassName("mode-dropdown")[0] as HTMLElement;
 
     this.CONTROLLER_DROPDOWN.addEventListener("change", () => {
       this.showController((this.CONTROLLER_DROPDOWN as HTMLSelectElement).value);
     });
 
-    this.REFRESH_BUTTON.addEventListener("click", () => {
-      this.reloadControllerList();
+    this.MODE_DROPDOWN.addEventListener("change", (e: Event) => {
+      window.setNt4("/OxConfig/ModeSetter", (this.MODE_DROPDOWN as HTMLSelectElement).value);
     });
 
     // Scroll handling
@@ -189,7 +192,7 @@ export default class PIDTunerController implements TabController {
 
   saveState(): LineGraphState {
     return {
-      type: TabType.PIDTuner,
+      type: TabType.Tuner,
       legends: {
         left: {
           lockedRange: this.leftLockedRange,
@@ -339,7 +342,7 @@ export default class PIDTunerController implements TabController {
     for (let i = 0; i < parameters.length; i++) {
       let tr = document.createElement("tr");
       let td1 = document.createElement("td");
-      td1.innerText = this.truncate(parameters[i][0], 26);
+      td1.innerText = parameters[i][0];
       let td2 = document.createElement("td");
       let input = document.createElement("input");
       if (!isNaN(parameters[i][2])) {
@@ -360,8 +363,8 @@ export default class PIDTunerController implements TabController {
   }
 
   private reloadControllerList() {
-    let controllers = window.log.getString("NT:/OxConfig/Classes", this.timestampRange[1], this.timestampRange[1]);
-    console.log(controllers);
+    this.loadModes();
+    let controllers = window.log.getString("NT:/OxConfig/Classes", Infinity, Infinity);
     this.CONTROLLER_DROPDOWN.innerHTML = "";
     if (controllers == null || controllers.values[0] == null) {
       let option = document.createElement("option");
@@ -370,6 +373,7 @@ export default class PIDTunerController implements TabController {
       this.CONTROLLER_DROPDOWN.appendChild(option);
       return;
     }
+    if (controllers.values[0] == JSON.stringify(this.controllerList)) return;
     let controllerList;
     try {
       controllerList = JSON.parse(controllers.values[0]);
@@ -546,6 +550,8 @@ export default class PIDTunerController implements TabController {
 
   getActiveFields(): string[] {
     return [
+      "NT:/OxConfig/Classes",
+      "NT:/OxConfig/Modes",
       ...this.leftFields.map((field) => field.key),
       ...this.discreteFields.map((field) => field.key),
       ...this.rightFields.map((field) => field.key)
@@ -729,6 +735,7 @@ export default class PIDTunerController implements TabController {
   }
 
   periodic() {
+    this.reloadControllerList();
     // Scroll sensor periodic
     this.scrollSensor.periodic();
 
@@ -1177,8 +1184,25 @@ export default class PIDTunerController implements TabController {
       });
     });
   }
-  private truncate(str: string, n: number) {
-    return str.length > n ? str.slice(0, n - 1) + "…" : str;
+  private loadModes() {
+    let mode = window.log.getString("NT:/OxConfig/CurrentMode", Infinity, Infinity)?.values[0];
+    if (mode != null && this.mode != mode) (this.MODE_DROPDOWN as HTMLSelectElement).value = mode;
+    let modesRaw = window.log.getString("NT:/OxConfig/Modes", Infinity, Infinity);
+    if (modesRaw != null) {
+      let tempModes = modesRaw.values[0].split(",");
+      if (tempModes.length > 0 && JSON.stringify(this.modes) != JSON.stringify(tempModes)) {
+        this.modes = tempModes;
+        this.MODE_DROPDOWN.innerHTML = "";
+        for (let mode of this.modes) {
+          let prettyMode = mode.charAt(0).toUpperCase();
+          prettyMode += mode.slice(1);
+          let choice = document.createElement("option");
+          choice.value = mode;
+          choice.innerText = prettyMode;
+          this.MODE_DROPDOWN.appendChild(choice);
+        }
+      }
+    }
   }
 }
 
@@ -1191,3 +1215,4 @@ interface AxisConfig {
    * actual size of the other values, but it can be used for labeling. */
   unit: number;
 }
+

@@ -13,7 +13,8 @@ enum TabType {
   Points,
   Metadata,
   ScoringNodes,
-  PIDTuner
+  Tuner,
+  ConfigEditor
 }
 
 export default TabType;
@@ -62,8 +63,10 @@ export function getDefaultTabTitle(type: TabType): string {
       return "Metadata";
     case TabType.ScoringNodes:
       return "Scoring Nodes";
-    case TabType.PIDTuner:
+    case TabType.Tuner:
       return "Tuner";
+    case TabType.ConfigEditor:
+      return "Config Editor";
     default:
       return "";
   }
@@ -99,8 +102,10 @@ export function getTabIcon(type: TabType): string {
       return "🔍";
     case TabType.ScoringNodes:
       return "🟪";
-    case TabType.PIDTuner:
+    case TabType.Tuner:
       return "🎛";
+    case TabType.ConfigEditor:
+      return "🛠️";
     default:
       return "";
   }

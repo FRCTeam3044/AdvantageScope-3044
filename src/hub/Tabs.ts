@@ -19,7 +19,8 @@ import ThreeDimensionController from "./tabControllers/ThreeDimensionController"
 import TimelineVizController from "./tabControllers/TimelineVizController";
 import VideoController from "./tabControllers/VideoController";
 import ScoringNodesController from "./tabControllers/ScoringNodesController";
-import PIDTunerController from "./tabControllers/PIDTunerController";
+import TunerController from "./tabControllers/TunerController";
+import ConfigEditorController from "./tabControllers/ConfigEditorController";
 
 export default class Tabs {
   private VIEWER = document.getElementsByClassName("viewer")[0] as HTMLElement;
@@ -256,9 +257,13 @@ export default class Tabs {
         contentElement.appendChild(this.CONTENT_TEMPLATES.children[14].cloneNode(true));
         controller = new ScoringNodesController(contentElement);
         break;
-      case TabType.PIDTuner:
+      case TabType.Tuner:
         contentElement = this.CONTENT_TEMPLATES.children[15].cloneNode(true) as HTMLElement;
-        controller = new PIDTunerController(contentElement);
+        controller = new TunerController(contentElement);
+        break;
+      case TabType.ConfigEditor:
+        contentElement = this.CONTENT_TEMPLATES.children[16].cloneNode(true) as HTMLElement;
+        controller = new ConfigEditorController(contentElement);
         break;
     }
 

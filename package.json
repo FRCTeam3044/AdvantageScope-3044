@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "electron-fetch": "^1.7.4",
+    "fuzzysort": "^2.0.4",
     "jsonfile": "^6.1.0",
     "ssh2": "^1.5.0"
   },

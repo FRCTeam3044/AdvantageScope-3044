@@ -280,6 +280,7 @@ export default class NT4Source extends LiveDataSource {
       this.client.publishTopic("/SmartDashboard/ScoringNodes", "boolean[]");
       this.client.publishTopic("/SmartDashboard/TargetNode", "double");
       this.client.publishTopic("/OxConfig/KeySetter", "string");
+      this.client.publishTopic("/OxConfig/ModeSetter", "string");
     }
   }
 

@@ -1679,23 +1679,24 @@ td.active {
   max-width: 35%;
 }
 
-.column-right h2 {
+.config-editor h2 {
   margin-bottom: 5px;
 }
 
-.column-right table th {
+.config-editor table th {
   padding-left: 8px;
 }
 
-.column-right input {
+.config-editor input {
   background-color: transparent;
   border: none;
   color: #222;
   font-family: monospace;
   font-size: 14px;
+  width: 100%;
 }
 
-.column-right button {
+.config-editor button {
   color: #fff;
   width: 75px;
   height: 30px;
@@ -1706,19 +1707,19 @@ td.active {
   margin: 20px 2px;
 }
 
-.column-right #refresh-button {
+#refresh-button {
   background-color: #c2a91b;
 }
 
-.column-right #refresh-button:hover {
+#refresh-button:hover {
   background-color: #b89b17;
 }
 
-.column-right #refresh-button:active {
+#refresh-button:active {
   background-color: #a88b14;
 }
 
-.pid-tuning-canvas {
+.tuning-canvas {
   width: 65%;
 }
 
@@ -1731,7 +1732,7 @@ select {
 }
 
 @media (prefers-color-scheme: dark) {
-  .column-right input {
+  .config-editor input {
     color: #fff;
   }
   select {
@@ -1741,7 +1742,7 @@ select {
   }
 }
 
-.column-right table {
+.config-editor table {
   border: 1px solid #fff;
   table-layout: fixed;
   width: 100%;
@@ -1749,11 +1750,56 @@ select {
   overflow: hidden;
 }
 
-.column-right table td {
+.config-editor table td {
   max-width: 0;
   text-overflow: ellipsis;
 }
 
 .scoring-config {
   display: none;
+}
+
+#config-editor-tab {
+  padding: 50px;
+  padding-top: 10px;
+}
+
+.param-table {
+  margin-top: 20px;
+}
+
+#search {
+  display: flex;
+  height: fit-content;
+  margin: 20px 0;
+  padding: 10px 0;
+}
+
+#search h3 {
+  margin: 0 15px 0 0;
+  padding: 5px 0;
+}
+
+#search input {
+  width: 40%;
+  border: 1px solid #222;
+}
+
+@media (prefers-color-scheme: dark) {
+  #search input {
+    border: 2px solid #fff;
+  }
+}
+
+.highlighted {
+  color: #fd6767;
+}
+
+.mode-dropdown {
+  margin: 0;
+}
+
+
+.mode-text {
+  margin-left: 15px !important;
 }

@@ -819,9 +819,9 @@
             </table>
           </div>
 
-          <!-- PID Tuning -->
-          <div class="tab-content" id="pid-tuning" hidden>
-            <div id="pid-tuner-graph">
+          <!-- Tuner -->
+          <div class="tab-content" id="tuning" hidden>
+            <div id="tuner-graph">
               <span class="legend-item-template" hidden>
                 <div class="legend-item">
                   <svg class="legend-splotch" height="25" width="25">
@@ -838,7 +838,7 @@
                 </div>
               </span>
 
-              <div class="line-graph-canvas-container pid-tuning-canvas">
+              <div class="line-graph-canvas-container tuning-canvas">
                 <canvas class="line-graph-canvas"></canvas>
                 <div class="line-graph-scroll">
                   <div class="line-graph-scroll-content"></div>
@@ -875,12 +875,16 @@
               </div>
               <div class="legend-right legend-drag-target" hidden></div>
             </div>
-            <div class="column-right">
+            <div class="config-editor column-right">
+              <h3 class="mode-text">Mode</h3>
+                <select class="dropdown mode-dropdown">
+                  <option value="failed">Not connected</option>
+                </select>
               <h2>Choose a controller</h2>
-              <select class="controller-dropdown">
-                <option value="failed">Failed to retrieve list</option>
+              <select class="dropdown controller-dropdown">
+                <option value="failed">Not yet refreshed</option>
               </select>
-              <div id="table-simple-controller">
+              <div id="controller-table">
                 <table class="data-table">
                   <thead>
                     <tr>
@@ -891,7 +895,29 @@
                   <tbody class="tuning-table"></tbody>
                 </table>
               </div>
-              <button class="refresh-button" id="refresh-button">Refresh</button>
+            </div>
+          </div>
+          <!-- Config Editor -->
+          <div class="config-editor tab-content" id="tuning" hidden>
+            <div id="config-editor-tab">
+              <h2>Config Editor</h2>
+              <div id="search">
+                <h3>Search</h3>
+                <input class="config-search" type="text" placeholder="Search..."></input>
+                <h3 class="mode-text">Mode</h3>
+                <select class="dropdown mode-dropdown">
+                  <option value="failed">Not connected</option>
+                </select>
+              </div>
+              <table class="data-table param-table">
+                <thead>
+                  <tr class="parameter-table-headers">
+                    <th>Parameter</th>
+                    <th>Comment</th>
+                  </tr>
+                </thead>
+                <tbody class="parameter-table"></tbody>
+              </table>
             </div>
           </div>
         </span>

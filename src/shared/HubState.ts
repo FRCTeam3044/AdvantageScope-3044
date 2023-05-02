@@ -22,7 +22,7 @@ export interface TabState {
 }
 
 export interface LineGraphState {
-  type: TabType.LineGraph | TabType.PIDTuner;
+  type: TabType.LineGraph | TabType.Tuner;
   legends: {
     left: {
       lockedRange: [number, number] | null;
