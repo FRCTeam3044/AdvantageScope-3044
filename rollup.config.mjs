@@ -15,9 +15,11 @@ const bundle = (input, output, external = []) => ({
 
 const mainBundles = [
   bundle("main/main.ts", "main.js", ["electron", "electron-fetch", "fs", "jsonfile", "net", "os", "path", "ssh2"]),
-  bundle("preload.ts", "preload.js", ["electron"])
+  bundle("preload.ts", "preload.js", ["electron"]),
+  bundle("preloadMain.ts", "preloadMain.js", ["electron"])
 ];
 const largeRendererBundles = [bundle("hub/hub.ts", "hub.js"), bundle("satellite.ts", "satellite.js")];
+const tabEditingBundle = [bundle("hub/hub.ts", "hub.js")];
 const smallRendererBundles = [
   bundle("editRange.ts", "editRange.js"),
   bundle("unitConversion.ts", "unitConversion.js"),
@@ -38,6 +40,7 @@ export default (cliArgs) => {
   if (cliArgs.configLargeRenderers === true) return largeRendererBundles;
   if (cliArgs.configSmallRenderers === true) return smallRendererBundles;
   if (cliArgs.configWorkers === true) return workerBundles;
+  if (cliArgs.configTabEditing === true) return tabEditingBundle;
 
   return [...mainBundles, ...largeRendererBundles, ...smallRendererBundles, ...workerBundles];
 };

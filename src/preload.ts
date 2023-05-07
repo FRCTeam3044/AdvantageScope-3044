@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron";
+import { ipcRenderer, contextBridge } from "electron";
 
 const windowLoaded = new Promise((resolve) => {
   window.onload = resolve;

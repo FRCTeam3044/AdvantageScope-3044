@@ -19,9 +19,13 @@ import WorkerManager from "./WorkerManager";
 const SAVE_PERIOD_MS = 250;
 const DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
 const UPDATE_BUTTON = document.getElementsByClassName("update")[0] as HTMLElement;
-
 // Global variables
 declare global {
+  interface IElectronAPI {
+    configExistsSync: (deployDir: string) => boolean;
+    writeConfig: (deployDir: string, config: string) => Promise<void>;
+  }
+
   interface Window {
     log: Log;
     preferences: Preferences | null;
@@ -37,6 +41,7 @@ declare global {
     sidebar: Sidebar;
     tabs: Tabs;
     messagePort: MessagePort | null;
+    deployWriter: IElectronAPI;
     setNt4: (topic: string, value: any) => void;
     isConnected: () => boolean;
     sendMainMessage: (name: string, data?: any) => void;

@@ -1,8 +1,8 @@
+import { e } from "mathjs";
 import { TabState } from "../../shared/HubState";
 import TabType from "../../shared/TabType";
 import TabController from "../TabController";
 import fuzzysort from "fuzzysort";
-import fs from "fs";
 
 export default class ConfigEditorController implements TabController {
   private PARAMETER_TABLE: HTMLElement;
@@ -16,7 +16,7 @@ export default class ConfigEditorController implements TabController {
   private parameters = new Map();
   private parametersSearched = new Map();
   private oldArr = [];
-  private mode = "testing";
+  private mode = "failed";
 
   private hasLoaded = false;
 
@@ -45,7 +45,7 @@ export default class ConfigEditorController implements TabController {
   }
 
   getActiveFields(): string[] {
-    return ["NT:/OxConfig/Params", "NT:/OxConfig/Modes"];
+    return ["NT:/OxConfig/Params", "NT:/OxConfig/Modes", "NT:/OxConfig/CurrentMode", "NT:/OxConfig/Raw"];
   }
 
   saveState(): TabState {
@@ -82,12 +82,15 @@ export default class ConfigEditorController implements TabController {
         let valueInput = document.createElement("input");
         inputElements.push(valueInput);
         let value = param.values[modeIndex];
-        if (value == "true" || value == "false") {
+        if (param.type == "boolean") {
           valueInput.type = "checkbox";
           valueInput.checked = value == "true";
-        } else if (!isNaN(value)) {
+        } else if (["integer", "short", "long", "double"].includes(param.type)) {
           valueInput.type = "number";
           valueInput.value = value;
+          valueInput.addEventListener("keypress", function (evt: KeyboardEvent) {
+            if (evt.key == "e" || evt.key == "+" || evt.key == "-") evt.preventDefault();
+          });
         } else {
           valueInput.type = "text";
           valueInput.value = value;
@@ -109,22 +112,27 @@ export default class ConfigEditorController implements TabController {
   }
   private reloadParameters() {
     let params = window.log.getString("NT:/OxConfig/Params", Infinity, Infinity);
-    if (params == null) return;
+    if (params == null || params == undefined) return;
     let paramsRaw = JSON.parse(params.values[0]);
     this.loadModes();
-    if (JSON.stringify(this.oldArr) == JSON.stringify(paramsRaw)) return;
+    if (JSON.stringify(this.oldArr) == params.values[0]) return;
     this.hasLoaded = true;
 
     this.oldArr = paramsRaw;
     this.parameters.clear();
     for (let paramRaw of paramsRaw) {
       if (paramRaw[0] == "root/mode") continue;
-      this.parameters.set(paramRaw[0], {
-        values: paramRaw.slice(2),
-        comment: paramRaw[1]
+      // Not using .shift() because it modifies the original array, which causes infinite update loops
+      let key = paramRaw[0];
+      let comment = paramRaw[1];
+      let type = paramRaw[2].toLowerCase();
+      this.parameters.set(key, {
+        values: paramRaw.slice(3),
+        comment,
+        type
       });
     }
-    this.search("");
+    this.search((this.SEARCH_INPUT as HTMLInputElement).value);
     this.displayParams();
   }
 
@@ -161,24 +169,32 @@ export default class ConfigEditorController implements TabController {
       }
     }
 
+    if (this.curDeployDir == null) return;
     let raw = window.log.getString("NT:/OxConfig/Raw", Infinity, Infinity);
     if (raw == null) return;
     let split = raw.values[0].split(",");
     if (split[0] != this.oldRawTimestamp) {
       this.oldRawTimestamp = split[0];
-      if (fs.existsSync(this.curDeployDir + "/config.yml")) {
+      if (window.deployWriter.configExistsSync(this.curDeployDir)) {
         this.FAILED_DEPLOY_WARNING.style.display = "none";
         split.shift();
         let config = split.join(",");
-        fs.writeFileSync(this.curDeployDir + "/config.yml", config);
+        window.deployWriter.writeConfig(this.curDeployDir, config).catch((e) => {
+          console.error(e);
+          (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-text")[0] as HTMLElement).innerText =
+            "Failed to write file, ensure you have permission.";
+          this.FAILED_DEPLOY_WARNING.style.display = "block";
+        });
       } else {
+        (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-text")[0] as HTMLElement).innerText =
+          "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
         this.FAILED_DEPLOY_WARNING.style.display = "block";
       }
     }
   }
 
   private publishValues(key: string, array: HTMLInputElement[]) {
-    let keySet = [key];
+    let keySet = [key.replace(/<span class='highlighted'>/g, "").replace(/<\/span>/g, "")];
     for (let input of array) {
       let valueRaw;
       if (input.type == "checkbox") {
@@ -194,9 +210,6 @@ export default class ConfigEditorController implements TabController {
   }
 
   private loadModes() {
-    let mode = window.log.getString("NT:/OxConfig/CurrentMode", Infinity, Infinity)?.values[0];
-    if (mode != null && this.mode != mode) (this.MODE_DROPDOWN as HTMLSelectElement).value = mode;
-
     let modesRaw = window.log.getString("NT:/OxConfig/Modes", Infinity, Infinity);
     if (modesRaw != null) {
       let tempModes = modesRaw.values[0].split(",");
@@ -220,11 +233,19 @@ export default class ConfigEditorController implements TabController {
           this.PARAMETER_TABLE_HEADERS.appendChild(header);
 
           let choice = document.createElement("option");
+          console.log(mode);
           choice.value = mode;
           choice.innerText = prettyMode;
           this.MODE_DROPDOWN.appendChild(choice);
         }
       }
+    }
+
+    let mode = window.log.getString("NT:/OxConfig/CurrentMode", Infinity, Infinity)?.values[0];
+
+    if (mode != null && this.mode != mode) {
+      (this.MODE_DROPDOWN as HTMLSelectElement).value = mode;
+      this.mode = mode;
     }
   }
 }
