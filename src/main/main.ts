@@ -574,6 +574,9 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
           }
         });
       break;
+    case "write-preferences":
+      jsonfile.writeFileSync(PREFS_FILENAME, message.data);
+      sendAllPreferences();
 
     default:
       console.warn("Unknown message from hub renderer process", message);
@@ -1003,6 +1006,23 @@ function setupMenu() {
             sendMessage(window, "start-export");
           }
         },
+        {
+          label: "Select Deploy Directory...",
+          click(item, window) {
+            // Display a dialog to select the deploy directory
+            if (window == null || !hubWindows.includes(window)) return;
+            dialog
+              .showOpenDialog(window, {
+                title: "Select the deploy directory",
+                properties: ["openDirectory", "createDirectory", "dontAddToRecent"]
+              })
+              .then((files) => {
+                if (files.filePaths.length > 0) {
+                  sendMessage(window, "set-deploy-dir", files.filePaths[0]);
+                }
+              });
+          }
+        },
         { type: "separator" },
         {
           label: "Use USB roboRIO Address",
@@ -1302,6 +1322,8 @@ function createHubWindow() {
     icon: WINDOW_ICON,
     show: false,
     webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
       preload: path.join(__dirname, "preload.js")
     }
   };
@@ -1838,6 +1860,9 @@ app.whenReady().then(() => {
         oldPrefs.threeDimensionMode === "auto")
     ) {
       prefs.threeDimensionMode = oldPrefs.threeDimensionMode;
+    }
+    if ("deployDirectory" in oldPrefs && fs.existsSync(oldPrefs.deployDirectory)) {
+      prefs.deployDirectory = oldPrefs.deployDirectory;
     }
 
     jsonfile.writeFileSync(PREFS_FILENAME, prefs);

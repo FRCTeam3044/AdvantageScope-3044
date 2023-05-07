@@ -295,6 +295,10 @@ export default class NT4Source extends LiveDataSource {
     }
   }
 
+  isConnected(): boolean {
+    return this.status === LiveDataSourceStatus.Active;
+  }
+
   /** Gets the name of the topic, depending on whether we're running in AdvantageKit mode. */
   private getKeyFromTopic(topic: NT4_Topic): string {
     if (this.akitMode) {

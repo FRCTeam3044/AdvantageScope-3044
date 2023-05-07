@@ -1680,7 +1680,8 @@ td.active {
 }
 
 .config-editor h2 {
-  margin-bottom: 5px;
+  display: inline-block;
+  margin-bottom: 0px;
 }
 
 .config-editor table th {
@@ -1743,11 +1744,12 @@ select {
 }
 
 .config-editor table {
-  border: 1px solid #fff;
+  border: 1px solid #555;
   table-layout: fixed;
   width: 100%;
   white-space: nowrap;
   overflow: hidden;
+  margin-bottom: 0;
 }
 
 .config-editor table td {
@@ -1763,15 +1765,18 @@ select {
   padding: 50px;
   padding-top: 10px;
 }
-
-.param-table {
-  margin-top: 20px;
+.param-table td div {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 #search {
   display: flex;
   height: fit-content;
-  margin: 20px 0;
+  margin: 0;
   padding: 10px 0;
 }
 
@@ -1799,7 +1804,103 @@ select {
   margin: 0;
 }
 
-
 .mode-text {
   margin-left: 15px !important;
+}
+
+.warning {
+  background-color: rgba(245, 66, 84, 0.5);
+  border-radius: 5px;
+  border: 2px solid darkred;
+  padding: 5px 10px;
+  margin: 5px 0;
+  display: none;
+}
+
+.warning-container {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  flex-direction: row-reverse;
+  margin: 10px;
+  /* this stacks them on top, we want them to stack horizontally */
+  /* flex-direction: column-reverse; */
+}
+
+.warning-prefix {
+  font-weight: bolder;
+  color: #f8d330;
+}
+
+.warning-text {
+  font-size: medium;
+  margin: 4px 0;
+}
+
+.param-table-header {
+  width: 35%;
+}
+
+.comment-table-header {
+  width: 25%;
+}
+
+.param-table-container {
+  overflow-y: auto;
+  border: 1px solid #fff;
+  position: absolute;
+  top: 150px;
+  bottom: 100px;
+  right: 30px;
+  left: 30px;
+}
+
+/* Style for the question mark icon */
+.question-icon {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid #222;
+  text-align: center;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Style for the extra information */
+.extra-info {
+  display: none;
+  position: absolute;
+  top: 5px;
+  left: 10px;
+  font-size: small;
+  padding: 6px;
+  background-color: #fff;
+  border: 1px solid #222;
+  border-radius: 3px;
+  z-index: 1;
+}
+
+/* Show extra information on hover */
+.question-icon:hover + .extra-info {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  .extra-info {
+    background-color: #222;
+    color: #fff;
+    border: 1px solid #fff;
+  }
+  .question-icon {
+    border: 2px solid #fff;
+  }
+}
+
+.deploy-dir {
+  /* Keep on the same line as the h3 */
+  display: inline-block;
+  margin-left: 10px;
 }

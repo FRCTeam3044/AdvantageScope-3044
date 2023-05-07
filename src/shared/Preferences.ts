@@ -8,4 +8,5 @@ export default interface Preferences {
   rlogPort: number;
   threeDimensionMode: "quality" | "efficiency" | "auto";
   usb?: boolean;
+  deployDirectory: string;
 }

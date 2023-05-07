@@ -900,7 +900,26 @@
           <!-- Config Editor -->
           <div class="config-editor tab-content" id="tuning" hidden>
             <div id="config-editor-tab">
+              <div id="config-editor-header">
               <h2>Config Editor</h2>
+              <!-- add a questionmark icon with a tooltip, then "Deploy Directory: " -->
+              <p class="deploy-dir">
+                Deploy Directory
+                <span class="question-icon">?</span>
+                <span class="extra-info">The config file is modified directly on the rio, which will be overwritten on code rebuild. To save locally to prevent this and for source control, you must select a deploy directory in file > Select Deploy Directory.</span>
+                : <code class="deploy-dir-path">Not set</code>
+              </p>
+              <div class="warning-container">
+               <div class="warning">
+                <h3 class="warning-text"><span class="warning-prefix">⚠️ Warning!</span> The robot is disconnected. All changes from now until reconnection will be lost.</h3>
+              </div>
+              <div class="warning">
+                <h3 class="warning-text"><span class="warning-prefix">⚠️ Warning!</span> The deploy directory is unset. Changes will be overwritten on code rebuild.</h3>
+              </div>
+              <div class="warning">
+                <h3 class="warning-text"><span class="warning-prefix">⚠️ Warning!</span> Failed to write file: Deploy directory is missing or doesn't contain config.yml.</h3>
+              </div>
+              </div>
               <div id="search">
                 <h3>Search</h3>
                 <input class="config-search" type="text" placeholder="Search..."></input>
@@ -909,15 +928,18 @@
                   <option value="failed">Not connected</option>
                 </select>
               </div>
-              <table class="data-table param-table">
-                <thead>
-                  <tr class="parameter-table-headers">
-                    <th>Parameter</th>
-                    <th>Comment</th>
-                  </tr>
-                </thead>
-                <tbody class="parameter-table"></tbody>
-              </table>
+              </div>
+              <div class="param-table-container">
+                <table class="data-table param-table">
+                  <thead>
+                    <tr class="parameter-table-headers">
+                      <th class="param-table-header">Parameter</th>
+                      <th class="comment-table-header">Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody class="parameter-table"></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </span>

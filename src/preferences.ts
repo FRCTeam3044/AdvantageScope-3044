@@ -73,7 +73,8 @@ window.addEventListener("message", (event) => {
             liveMode: liveMode,
             liveSubscribeMode: liveSubscribeMode,
             rlogPort: Number(RLOG_PORT.value),
-            threeDimensionMode: threeDimensionMode
+            threeDimensionMode: threeDimensionMode,
+            deployDirectory: oldPrefs.deployDirectory
           };
           messagePort.postMessage(newPrefs);
         } else {

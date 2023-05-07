@@ -38,6 +38,7 @@ declare global {
     tabs: Tabs;
     messagePort: MessagePort | null;
     setNt4: (topic: string, value: any) => void;
+    isConnected: () => boolean;
     sendMainMessage: (name: string, data?: any) => void;
     startDrag: (x: number, y: number, offsetX: number, offsetY: number, data: any) => void;
 
@@ -61,6 +62,11 @@ window.setNt4 = (topic: string, value: any) => {
   if (liveSource instanceof NT4Source) {
     liveSource.publishValue(topic, value);
   }
+};
+
+window.isConnected = () => {
+  if (!(liveSource instanceof NT4Source)) return false;
+  return (liveSource as NT4Source).isConnected();
 };
 
 let historicalSource: HistoricalDataSource | null;
@@ -530,6 +536,13 @@ function handleMainMessage(message: NamedMessage) {
 
     case "finish-export":
       setLoading(false);
+      break;
+
+    case "set-deploy-dir":
+      // Update the deploy directory in preferences so it persists
+      if (window.preferences == null) break;
+      window.preferences.deployDirectory = message.data;
+      window.sendMainMessage("write-preferences", window.preferences);
       break;
 
     default:

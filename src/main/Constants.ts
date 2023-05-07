@@ -29,7 +29,8 @@ export const DEFAULT_PREFS: Preferences = {
   liveMode: "nt4",
   liveSubscribeMode: "low-bandwidth",
   rlogPort: 5800,
-  threeDimensionMode: "quality"
+  threeDimensionMode: "quality",
+  deployDirectory: ""
 };
 
 // Live RLOG

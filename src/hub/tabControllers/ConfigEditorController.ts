@@ -2,24 +2,38 @@ import { TabState } from "../../shared/HubState";
 import TabType from "../../shared/TabType";
 import TabController from "../TabController";
 import fuzzysort from "fuzzysort";
+import fs from "fs";
 
 export default class ConfigEditorController implements TabController {
   private PARAMETER_TABLE: HTMLElement;
   private PARAMETER_TABLE_HEADERS: HTMLElement;
   private SEARCH_INPUT: HTMLElement;
   private MODE_DROPDOWN: HTMLElement;
+  private WARNING_DIV: HTMLElement;
+  private NO_DEPLOY_WARNING: HTMLElement;
+  private FAILED_DEPLOY_WARNING: HTMLElement;
+  private DEPLOY_DIR: HTMLElement;
   private parameters = new Map();
   private parametersSearched = new Map();
   private oldArr = [];
   private mode = "testing";
 
+  private hasLoaded = false;
+
   private modes: string[] = [];
+
+  private curDeployDir: string | null = null;
+  private oldRawTimestamp: string = "0";
 
   constructor(content: HTMLElement) {
     this.PARAMETER_TABLE = content.getElementsByClassName("parameter-table")[0] as HTMLElement;
     this.SEARCH_INPUT = content.getElementsByClassName("config-search")[0] as HTMLElement;
     this.PARAMETER_TABLE_HEADERS = content.getElementsByClassName("parameter-table-headers")[0] as HTMLElement;
     this.MODE_DROPDOWN = content.getElementsByClassName("mode-dropdown")[0] as HTMLElement;
+    this.WARNING_DIV = content.getElementsByClassName("warning")[0] as HTMLElement;
+    this.NO_DEPLOY_WARNING = content.getElementsByClassName("warning")[1] as HTMLElement;
+    this.FAILED_DEPLOY_WARNING = content.getElementsByClassName("warning")[2] as HTMLElement;
+    this.DEPLOY_DIR = content.getElementsByClassName("deploy-dir-path")[0] as HTMLElement;
     this.SEARCH_INPUT.addEventListener("input", (e: Event) => {
       let { target } = e;
       if (target == null) return;
@@ -52,7 +66,9 @@ export default class ConfigEditorController implements TabController {
 
       let row = document.createElement("tr");
       let keyCell = document.createElement("td");
-      keyCell.innerHTML = key;
+      let keyDiv = document.createElement("div");
+      keyDiv.innerHTML = key;
+      keyCell.appendChild(keyDiv);
       let commentCell = document.createElement("td");
       let commentInput = document.createElement("input");
       let param = this.parametersSearched.get(key);
@@ -68,12 +84,15 @@ export default class ConfigEditorController implements TabController {
         let value = param.values[modeIndex];
         if (value == "true" || value == "false") {
           valueInput.type = "checkbox";
+          valueInput.checked = value == "true";
         } else if (!isNaN(value)) {
           valueInput.type = "number";
+          valueInput.value = value;
         } else {
           valueInput.type = "text";
+          valueInput.value = value;
         }
-        valueInput.value = value;
+
         let valueCell = document.createElement("td");
         valueCell.appendChild(valueInput);
         row.appendChild(valueCell);
@@ -94,7 +113,8 @@ export default class ConfigEditorController implements TabController {
     let paramsRaw = JSON.parse(params.values[0]);
     this.loadModes();
     if (JSON.stringify(this.oldArr) == JSON.stringify(paramsRaw)) return;
-    
+    this.hasLoaded = true;
+
     this.oldArr = paramsRaw;
     this.parameters.clear();
     for (let paramRaw of paramsRaw) {
@@ -124,12 +144,49 @@ export default class ConfigEditorController implements TabController {
   }
   periodic() {
     this.reloadParameters();
+    if (this.hasLoaded && !window.isConnected()) {
+      this.WARNING_DIV.style.display = "block";
+    } else {
+      this.WARNING_DIV.style.display = "none";
+    }
+
+    if (this.curDeployDir != window.preferences?.deployDirectory) {
+      if (window.preferences?.deployDirectory == null || window.preferences?.deployDirectory == "") {
+        this.DEPLOY_DIR.innerHTML = "Not Set";
+        this.NO_DEPLOY_WARNING.style.display = "block";
+      } else {
+        this.curDeployDir = window.preferences?.deployDirectory;
+        this.NO_DEPLOY_WARNING.style.display = "none";
+        this.DEPLOY_DIR.innerHTML = this.curDeployDir;
+      }
+    }
+
+    let raw = window.log.getString("NT:/OxConfig/Raw", Infinity, Infinity);
+    if (raw == null) return;
+    let split = raw.values[0].split(",");
+    if (split[0] != this.oldRawTimestamp) {
+      this.oldRawTimestamp = split[0];
+      if (fs.existsSync(this.curDeployDir + "/config.yml")) {
+        this.FAILED_DEPLOY_WARNING.style.display = "none";
+        split.shift();
+        let config = split.join(",");
+        fs.writeFileSync(this.curDeployDir + "/config.yml", config);
+      } else {
+        this.FAILED_DEPLOY_WARNING.style.display = "block";
+      }
+    }
   }
 
   private publishValues(key: string, array: HTMLInputElement[]) {
     let keySet = [key];
     for (let input of array) {
-      let value = input.value.replace(/<span class='highlighted'>/g, "").replace(/<\/span>/g, "");
+      let valueRaw;
+      if (input.type == "checkbox") {
+        valueRaw = input.checked ? "true" : "false";
+      } else {
+        valueRaw = input.value;
+      }
+      let value = valueRaw.replace(/<span class='highlighted'>/g, "").replace(/<\/span>/g, "");
       keySet.push(value);
     }
 
@@ -149,9 +206,11 @@ export default class ConfigEditorController implements TabController {
         this.MODE_DROPDOWN.innerHTML = "";
         let paramHeader = document.createElement("th");
         paramHeader.innerText = "Parameter";
+        paramHeader.className = "param-table-header";
         this.PARAMETER_TABLE_HEADERS.appendChild(paramHeader);
         let commentHeader = document.createElement("th");
         commentHeader.innerText = "Comment";
+        commentHeader.className = "comment-table-header";
         this.PARAMETER_TABLE_HEADERS.appendChild(commentHeader);
         for (let mode of this.modes) {
           let prettyMode = mode.charAt(0).toUpperCase();
