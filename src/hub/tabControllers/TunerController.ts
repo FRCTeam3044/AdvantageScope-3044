@@ -46,6 +46,8 @@ export default class TunerController implements TabController {
   private mode: string = "testing";
   private curDeployDir: string = "failed";
   private curController: string = "";
+  private hasLoaded = false;
+  private oldRawTimestamp: string = "0";
 
   private leftFields: {
     key: string;
@@ -335,6 +337,31 @@ export default class TunerController implements TabController {
     this.reloadControllerList();
     this.updateScroll();
 
+    if (this.curDeployDir != null) {
+      let raw = window.log.getString("NT:/OxConfig/Raw", Infinity, Infinity);
+      if (raw != null) {
+        let split = raw.values[0].split(",");
+        if (split[0] != this.oldRawTimestamp) {
+          this.oldRawTimestamp = split[0];
+          if (window.deployWriter.configExistsSync(this.curDeployDir)) {
+            this.FAILED_DEPLOY_WARNING.style.display = "none";
+            split.shift();
+            let config = split.join(",");
+            window.deployWriter.writeConfig(this.curDeployDir, config).catch((e) => {
+              console.error(e);
+              (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
+                "Failed to write file, ensure you have permission.";
+              this.FAILED_DEPLOY_WARNING.style.display = "block";
+            });
+          } else {
+            (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
+              "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
+            this.FAILED_DEPLOY_WARNING.style.display = "block";
+          }
+        }
+      }
+    }
+
     // Update field strikethrough
     let availableFields = window.log.getFieldKeys();
     [
@@ -404,6 +431,7 @@ export default class TunerController implements TabController {
       return;
     }
     if (controllers.values[0] == JSON.stringify(this.controllerList)) return;
+    this.hasLoaded = true;
     this.CONTROLLER_DROPDOWN.innerHTML = "";
     let controllerList;
     try {
@@ -775,6 +803,11 @@ export default class TunerController implements TabController {
   }
 
   periodic() {
+    if (this.hasLoaded && !window.isConnected()) {
+      this.WARNING_DIV.style.display = "block";
+    } else {
+      this.WARNING_DIV.style.display = "none";
+    }
     if (this.curDeployDir != window.preferences?.deployDirectory) {
       if (window.preferences?.deployDirectory == null || window.preferences?.deployDirectory == "") {
         this.DEPLOY_DIR.innerHTML = "Not Set";
