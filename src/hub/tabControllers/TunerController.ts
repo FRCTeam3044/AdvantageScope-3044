@@ -25,7 +25,12 @@ export default class TunerController implements TabController {
   private SCROLL_OVERLAY: HTMLElement;
   private CONTROLLER_DROPDOWN: HTMLElement;
   private PARAMETER_TABLE: HTMLElement;
-  private MODE_DROPDOWN: HTMLElement;
+  private CUR_MODE_DROPDOWN: HTMLElement;
+  private EDIT_MODE_DROPDOWN: HTMLElement;
+  private DEPLOY_DIR: HTMLElement;
+  private WARNING_DIV: HTMLElement;
+  private NO_DEPLOY_WARNING: HTMLElement;
+  private FAILED_DEPLOY_WARNING: HTMLElement;
 
   private LEFT_LIST: HTMLElement;
   private DISCRETE_LIST: HTMLElement;
@@ -39,6 +44,8 @@ export default class TunerController implements TabController {
   private controllerList = [];
   private modes: string[] = [];
   private mode: string = "testing";
+  private curDeployDir: string = "failed";
+  private curController: string = "";
 
   private leftFields: {
     key: string;
@@ -96,14 +103,25 @@ export default class TunerController implements TabController {
     // tuner code
     this.CONTROLLER_DROPDOWN = content.getElementsByClassName("controller-dropdown")[0] as HTMLElement;
     this.PARAMETER_TABLE = content.getElementsByClassName("tuning-table")[0] as HTMLElement;
-    this.MODE_DROPDOWN = content.getElementsByClassName("mode-dropdown")[0] as HTMLElement;
+    this.CUR_MODE_DROPDOWN = content.getElementsByClassName("mode-dropdown")[0] as HTMLElement;
+    this.EDIT_MODE_DROPDOWN = content.getElementsByClassName("tuner-mode")[0] as HTMLElement;
+    this.DEPLOY_DIR = content.getElementsByClassName("deploy-dir-path")[0] as HTMLElement;
+
+    this.WARNING_DIV = content.getElementsByClassName("warning")[0] as HTMLElement;
+    this.NO_DEPLOY_WARNING = content.getElementsByClassName("warning")[1] as HTMLElement;
+    this.FAILED_DEPLOY_WARNING = content.getElementsByClassName("warning")[2] as HTMLElement;
 
     this.CONTROLLER_DROPDOWN.addEventListener("change", () => {
       this.showController((this.CONTROLLER_DROPDOWN as HTMLSelectElement).value);
+      this.curController = (this.CONTROLLER_DROPDOWN as HTMLSelectElement).value;
     });
 
-    this.MODE_DROPDOWN.addEventListener("change", (e: Event) => {
-      window.setNt4("/OxConfig/ModeSetter", (this.MODE_DROPDOWN as HTMLSelectElement).value);
+    this.EDIT_MODE_DROPDOWN.addEventListener("change", () => {
+      this.showController((this.CONTROLLER_DROPDOWN as HTMLSelectElement).value);
+    });
+
+    this.CUR_MODE_DROPDOWN.addEventListener("change", (e: Event) => {
+      window.setNt4("/OxConfig/ModeSetter", (this.CUR_MODE_DROPDOWN as HTMLSelectElement).value);
     });
 
     // Scroll handling
@@ -314,6 +332,7 @@ export default class TunerController implements TabController {
   }
 
   refresh() {
+    this.reloadControllerList();
     this.updateScroll();
 
     // Update field strikethrough
@@ -345,15 +364,27 @@ export default class TunerController implements TabController {
       td1.innerText = parameters[i][0];
       let td2 = document.createElement("td");
       let input = document.createElement("input");
-      if (!isNaN(parameters[i][2])) {
+      let type = parameters[i][2].toLowerCase();
+      let value = parameters[i][this.modes.indexOf((this.EDIT_MODE_DROPDOWN as HTMLSelectElement).value) + 3];
+      if (type == "boolean") {
+        input.type = "checkbox";
+        input.checked = value == "true";
+      } else if (["integer", "short", "long", "double"].includes(type)) {
         input.type = "number";
+        input.value = value;
+        input.addEventListener("keypress", function (evt: KeyboardEvent) {
+          if (evt.key == "e" || evt.key == "+" || evt.key == "-") evt.preventDefault();
+        });
       } else {
         input.type = "text";
+        input.value = value;
       }
 
-      input.value = parameters[i][2];
       input.addEventListener("change", () => {
-        window.setNt4("/OxConfig/KeySetter", parameters[i][1] + "," + input.value);
+        window.setNt4(
+          "/OxConfig/SingleKeySetter",
+          parameters[i][1] + "," + (this.EDIT_MODE_DROPDOWN as HTMLSelectElement).value + "," + input.value
+        );
       });
       td2.appendChild(input);
       tr.appendChild(td1);
@@ -365,7 +396,6 @@ export default class TunerController implements TabController {
   private reloadControllerList() {
     this.loadModes();
     let controllers = window.log.getString("NT:/OxConfig/Classes", Infinity, Infinity);
-    this.CONTROLLER_DROPDOWN.innerHTML = "";
     if (controllers == null || controllers.values[0] == null) {
       let option = document.createElement("option");
       option.value = "failed";
@@ -374,6 +404,7 @@ export default class TunerController implements TabController {
       return;
     }
     if (controllers.values[0] == JSON.stringify(this.controllerList)) return;
+    this.CONTROLLER_DROPDOWN.innerHTML = "";
     let controllerList;
     try {
       controllerList = JSON.parse(controllers.values[0]);
@@ -385,12 +416,19 @@ export default class TunerController implements TabController {
       return;
     }
     this.controllerList = controllerList;
-    this.showController(controllerList[0][1]);
+
     for (let controller of controllerList) {
       let option = document.createElement("option");
       option.value = controller[1];
       option.innerText = controller[0];
       this.CONTROLLER_DROPDOWN.appendChild(option);
+    }
+    if (controllerList.find((c: any) => c[1] == this.curController) != null) {
+      this.showController(this.curController);
+      (this.CONTROLLER_DROPDOWN as HTMLSelectElement).value = this.curController;
+    } else {
+      this.showController(controllerList[0][1]);
+      this.curController = controllerList[0][1];
     }
   }
 
@@ -552,6 +590,8 @@ export default class TunerController implements TabController {
     return [
       "NT:/OxConfig/Classes",
       "NT:/OxConfig/Modes",
+      "NT:/OxConfig/CurrentMode",
+      "NT:/OxConfig/Raw",
       ...this.leftFields.map((field) => field.key),
       ...this.discreteFields.map((field) => field.key),
       ...this.rightFields.map((field) => field.key)
@@ -735,7 +775,16 @@ export default class TunerController implements TabController {
   }
 
   periodic() {
-    this.reloadControllerList();
+    if (this.curDeployDir != window.preferences?.deployDirectory) {
+      if (window.preferences?.deployDirectory == null || window.preferences?.deployDirectory == "") {
+        this.DEPLOY_DIR.innerHTML = "Not Set";
+        this.NO_DEPLOY_WARNING.style.display = "block";
+      } else {
+        this.curDeployDir = window.preferences?.deployDirectory;
+        this.NO_DEPLOY_WARNING.style.display = "none";
+        this.DEPLOY_DIR.innerHTML = this.curDeployDir;
+      }
+    }
     // Scroll sensor periodic
     this.scrollSensor.periodic();
 
@@ -1185,23 +1234,31 @@ export default class TunerController implements TabController {
     });
   }
   private loadModes() {
-    let mode = window.log.getString("NT:/OxConfig/CurrentMode", Infinity, Infinity)?.values[0];
-    if (mode != null && this.mode != mode) (this.MODE_DROPDOWN as HTMLSelectElement).value = mode;
     let modesRaw = window.log.getString("NT:/OxConfig/Modes", Infinity, Infinity);
     if (modesRaw != null) {
       let tempModes = modesRaw.values[0].split(",");
       if (tempModes.length > 0 && JSON.stringify(this.modes) != JSON.stringify(tempModes)) {
         this.modes = tempModes;
-        this.MODE_DROPDOWN.innerHTML = "";
+        this.CUR_MODE_DROPDOWN.innerHTML = "";
+        this.EDIT_MODE_DROPDOWN.innerHTML = "";
         for (let mode of this.modes) {
           let prettyMode = mode.charAt(0).toUpperCase();
           prettyMode += mode.slice(1);
+
           let choice = document.createElement("option");
           choice.value = mode;
           choice.innerText = prettyMode;
-          this.MODE_DROPDOWN.appendChild(choice);
+          this.CUR_MODE_DROPDOWN.appendChild(choice);
+          this.EDIT_MODE_DROPDOWN.appendChild(choice.cloneNode(true) as HTMLElement);
         }
       }
+    }
+
+    let mode = window.log.getString("NT:/OxConfig/CurrentMode", Infinity, Infinity)?.values[0];
+
+    if (mode != null && this.mode != mode) {
+      (this.CUR_MODE_DROPDOWN as HTMLSelectElement).value = mode;
+      this.mode = mode;
     }
   }
 }
@@ -1215,4 +1272,3 @@ interface AxisConfig {
    * actual size of the other values, but it can be used for labeling. */
   unit: number;
 }
-

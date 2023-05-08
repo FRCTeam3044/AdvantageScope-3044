@@ -1788,6 +1788,7 @@ select {
 #search input {
   width: 40%;
   border: 1px solid #222;
+  margin-right: 10px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1805,7 +1806,11 @@ select {
 }
 
 .mode-text {
-  margin-left: 15px !important;
+  display: inline;
+}
+
+.deploy-tuner {
+  margin-left: 0 !important;
 }
 
 .warning {
@@ -1903,4 +1908,15 @@ select {
   /* Keep on the same line as the h3 */
   display: inline-block;
   margin-left: 10px;
+}
+
+.tuner-mode {
+  margin-top: 10px;
+  margin-left: 8px;
+}
+
+.extra-info-tuner {
+  left: unset;
+  top: -10px;
+  right: 30px;
 }

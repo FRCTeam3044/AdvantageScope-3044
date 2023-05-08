@@ -58,22 +58,6 @@ export default class ConfigEditorController implements TabController {
 
   refresh() {
     this.reloadParameters();
-    if (this.hasLoaded && !window.isConnected()) {
-      this.WARNING_DIV.style.display = "block";
-    } else {
-      this.WARNING_DIV.style.display = "none";
-    }
-
-    if (this.curDeployDir != window.preferences?.deployDirectory) {
-      if (window.preferences?.deployDirectory == null || window.preferences?.deployDirectory == "") {
-        this.DEPLOY_DIR.innerHTML = "Not Set";
-        this.NO_DEPLOY_WARNING.style.display = "block";
-      } else {
-        this.curDeployDir = window.preferences?.deployDirectory;
-        this.NO_DEPLOY_WARNING.style.display = "none";
-        this.DEPLOY_DIR.innerHTML = this.curDeployDir;
-      }
-    }
 
     if (this.curDeployDir == null) return;
     let raw = window.log.getString("NT:/OxConfig/Raw", Infinity, Infinity);
@@ -87,12 +71,12 @@ export default class ConfigEditorController implements TabController {
         let config = split.join(",");
         window.deployWriter.writeConfig(this.curDeployDir, config).catch((e) => {
           console.error(e);
-          (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-text")[0] as HTMLElement).innerText =
+          (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
             "Failed to write file, ensure you have permission.";
           this.FAILED_DEPLOY_WARNING.style.display = "block";
         });
       } else {
-        (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-text")[0] as HTMLElement).innerText =
+        (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
           "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
         this.FAILED_DEPLOY_WARNING.style.display = "block";
       }
@@ -191,7 +175,23 @@ export default class ConfigEditorController implements TabController {
     }
     this.displayParams();
   }
-  periodic() {}
+  periodic() {
+    if (this.hasLoaded && !window.isConnected()) {
+      this.WARNING_DIV.style.display = "block";
+    } else {
+      this.WARNING_DIV.style.display = "none";
+    }
+    if (this.curDeployDir != window.preferences?.deployDirectory) {
+      if (window.preferences?.deployDirectory == null || window.preferences?.deployDirectory == "") {
+        this.DEPLOY_DIR.innerHTML = "Not Set";
+        this.NO_DEPLOY_WARNING.style.display = "block";
+      } else {
+        this.curDeployDir = window.preferences?.deployDirectory;
+        this.NO_DEPLOY_WARNING.style.display = "none";
+        this.DEPLOY_DIR.innerHTML = this.curDeployDir;
+      }
+    }
+  }
 
   private publishValues(key: string, array: HTMLInputElement[]) {
     let keySet = [key.replace(/<span class='highlighted'>/g, "").replace(/<\/span>/g, "")];

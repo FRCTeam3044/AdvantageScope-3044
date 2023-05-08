@@ -577,7 +577,7 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
     case "write-preferences":
       jsonfile.writeFileSync(PREFS_FILENAME, message.data);
       sendAllPreferences();
-
+      break;
     default:
       console.warn("Unknown message from hub renderer process", message);
       break;
