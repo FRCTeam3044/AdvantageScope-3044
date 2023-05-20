@@ -1635,15 +1635,6 @@ table.metadata-table td.no-data {
   }
 }
 
-.scoring-table {
-  position: absolute;
-  left: 0%;
-  width: 100%;
-  top: 0%;
-  height: 100%;
-  border-spacing: 10px;
-}
-
 td.hybrid {
   background-color: #777777;
 }
@@ -1731,10 +1722,6 @@ select {
 .config-editor table td {
   max-width: 0;
   text-overflow: ellipsis;
-}
-
-.scoring-config {
-  display: none;
 }
 
 #config-editor-tab {

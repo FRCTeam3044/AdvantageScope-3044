@@ -18,7 +18,6 @@ import TableController from "./tabControllers/TableController";
 import ThreeDimensionController from "./tabControllers/ThreeDimensionController";
 import TimelineVizController from "./tabControllers/TimelineVizController";
 import VideoController from "./tabControllers/VideoController";
-import ScoringNodesController from "./tabControllers/ScoringNodesController";
 import TunerController from "./tabControllers/TunerController";
 import ConfigEditorController from "./tabControllers/ConfigEditorController";
 
@@ -252,17 +251,12 @@ export default class Tabs {
         contentElement = this.CONTENT_TEMPLATES.children[13].cloneNode(true) as HTMLElement;
         controller = new MetadataController(contentElement);
         break;
-      case TabType.ScoringNodes:
-        contentElement = this.CONTENT_TEMPLATES.children[5].cloneNode(true) as HTMLElement;
-        contentElement.appendChild(this.CONTENT_TEMPLATES.children[14].cloneNode(true));
-        controller = new ScoringNodesController(contentElement);
-        break;
       case TabType.Tuner:
-        contentElement = this.CONTENT_TEMPLATES.children[15].cloneNode(true) as HTMLElement;
+        contentElement = this.CONTENT_TEMPLATES.children[14].cloneNode(true) as HTMLElement;
         controller = new TunerController(contentElement);
         break;
       case TabType.ConfigEditor:
-        contentElement = this.CONTENT_TEMPLATES.children[16].cloneNode(true) as HTMLElement;
+        contentElement = this.CONTENT_TEMPLATES.children[15].cloneNode(true) as HTMLElement;
         controller = new ConfigEditorController(contentElement);
         break;
     }
