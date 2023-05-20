@@ -1,6 +1,6 @@
-# AdvantageScope
+# AdvantageScope-3044
 
-[![Build](https://github.com/Mechanical-Advantage/AdvantageScope/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Mechanical-Advantage/AdvantageScope/actions/workflows/build.yml)
+AdvantageScope-3044 is a fork of [AdvantageScope](https://github.com/Mechanical-Advantage/AdvantageScope) designed for use with [OxConfig](https://github.com/FRCTeam3044/OxConfig) to allow for realtime editng/tuning of values.
 
 AdvantageScope is a robot diagnostics, log review/analysis, and data visualization application for FIRST Robotics Competition teams. It reads logs in WPILOG, DS log, and RLOG file formats, plus live robot data viewing using NT4 or RLOG streaming. AdvantageScope can be used with any WPILib project, but is also optimized for use with our [AdvantageKit](https://github.com/Mechanical-Advantage/AdvantageKit) logging framework.
 
@@ -22,5 +22,5 @@ It includes the following tools:
 
 ## Installation
 
-1. Find the [latest release](https://github.com/Mechanical-Advantage/AdvantageScope/releases/latest) under "Releases".
+1. Find the [latest release](https://github.com/FRCTeam3044/AdvantageScope-3044/releases/latest) under "Releases".
 2. Download the appropriate build based on the OS & architecture. AdvantageScope supports Windows, macOS, and Linux on both x86 and ARM architectures.
