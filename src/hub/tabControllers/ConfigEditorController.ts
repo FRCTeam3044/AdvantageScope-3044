@@ -3,6 +3,8 @@ import { TabState } from "../../shared/HubState";
 import TabType from "../../shared/TabType";
 import TabController from "../TabController";
 import fuzzysort from "fuzzysort";
+import LoggableType from "../../shared/log/LoggableType";
+import { getOrDefault } from "../../shared/log/LogUtil";
 
 export default class ConfigEditorController implements TabController {
   private PARAMETER_TABLE: HTMLElement;
@@ -12,6 +14,7 @@ export default class ConfigEditorController implements TabController {
   private WARNING_DIV: HTMLElement;
   private NO_DEPLOY_WARNING: HTMLElement;
   private FAILED_DEPLOY_WARNING: HTMLElement;
+  private SUCCESS_WARNING: HTMLElement;
   private DEPLOY_DIR: HTMLElement;
   private parameters = new Map();
   private parametersSearched = new Map();
@@ -24,6 +27,7 @@ export default class ConfigEditorController implements TabController {
 
   private curDeployDir: string | null = null;
   private oldRawTimestamp: string = "0";
+  private successLeaveTimeout: NodeJS.Timeout | null = null;
 
   constructor(content: HTMLElement) {
     this.PARAMETER_TABLE = content.getElementsByClassName("parameter-table")[0] as HTMLElement;
@@ -33,6 +37,7 @@ export default class ConfigEditorController implements TabController {
     this.WARNING_DIV = content.getElementsByClassName("warning")[0] as HTMLElement;
     this.NO_DEPLOY_WARNING = content.getElementsByClassName("warning")[1] as HTMLElement;
     this.FAILED_DEPLOY_WARNING = content.getElementsByClassName("warning")[2] as HTMLElement;
+    this.SUCCESS_WARNING = content.getElementsByClassName("warning")[3] as HTMLElement;
     this.DEPLOY_DIR = content.getElementsByClassName("deploy-dir-path")[0] as HTMLElement;
     this.SEARCH_INPUT.addEventListener("input", (e: Event) => {
       let { target } = e;
@@ -56,31 +61,36 @@ export default class ConfigEditorController implements TabController {
 
   restoreState(state: TabState) {}
 
-  refresh() {
-    this.reloadParameters();
-
-    if (this.curDeployDir == null) return;
-    let raw = window.log.getString("NT:/OxConfig/Raw", Infinity, Infinity);
-    if (raw == null) return;
-    let split = raw.values[0].split(",");
-    if (split[0] != this.oldRawTimestamp) {
-      this.oldRawTimestamp = split[0];
-      if (window.deployWriter.configExistsSync(this.curDeployDir)) {
-        this.FAILED_DEPLOY_WARNING.style.display = "none";
-        split.shift();
-        let config = split.join(",");
-        window.deployWriter.writeConfig(this.curDeployDir, config).catch((e) => {
-          console.error(e);
-          (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
-            "Failed to write file, ensure you have permission.";
-          this.FAILED_DEPLOY_WARNING.style.display = "block";
-        });
-      } else {
+  writeResult(result: string) {
+    if (result != "noexist") {
+      this.FAILED_DEPLOY_WARNING.style.display = "none";
+      if (result == "success") {
+        this.SUCCESS_WARNING.style.opacity = "1";
+        this.SUCCESS_WARNING.style.display = "block";
+        if (this.successLeaveTimeout != null) clearTimeout(this.successLeaveTimeout);
+        this.successLeaveTimeout = setTimeout(() => {
+          this.SUCCESS_WARNING.style.opacity = "0";
+          setTimeout(() => {
+            this.SUCCESS_WARNING.style.display = "none";
+          }, 500);
+        }, 2500);
+      } else if (result == "writeerror") {
         (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
-          "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
+          "Failed to write file, ensure you have permission.";
+        this.SUCCESS_WARNING.style.opacity = "0";
+        this.SUCCESS_WARNING.style.display = "none";
         this.FAILED_DEPLOY_WARNING.style.display = "block";
       }
+    } else {
+      (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
+        "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
+      this.SUCCESS_WARNING.style.opacity = "0";
+      this.SUCCESS_WARNING.style.display = "none";
+      this.FAILED_DEPLOY_WARNING.style.display = "block";
     }
+  }
+  refresh() {
+    this.reloadParameters();
   }
   private displayParams() {
     this.PARAMETER_TABLE.innerHTML = "";
@@ -113,8 +123,44 @@ export default class ConfigEditorController implements TabController {
         } else if (["integer", "short", "long", "double"].includes(param.type)) {
           valueInput.type = "number";
           valueInput.value = value;
+
+          switch (param.type) {
+            case "integer":
+              valueInput.step = "1";
+              valueInput.max = "2147483647";
+              valueInput.min = "-2147483648";
+              break;
+            case "short":
+              valueInput.step = "1";
+              valueInput.max = "32767";
+              valueInput.min = "-32768";
+              break;
+            case "long":
+              valueInput.step = "1";
+              valueInput.max = "9223372036854775807";
+              valueInput.min = "-9223372036854775808";
+              break;
+            case "double":
+              valueInput.step = "0.000000000000001";
+              valueInput.max = "1.7976931348623157E308";
+              valueInput.min = "-1.7976931348623157E308";
+              break;
+          }
           valueInput.addEventListener("keypress", function (evt: KeyboardEvent) {
-            if (evt.key == "e" || evt.key == "+" || evt.key == "-") evt.preventDefault();
+            if (evt.key == "e" || evt.key == "+") evt.preventDefault();
+            if (["integer", "short", "long"].includes(param.type) && evt.key == ".") evt.preventDefault();
+          });
+
+          valueInput.addEventListener("input", function (evt: Event) {
+            const currentValue = parseFloat(valueInput.value);
+            const maxValue = parseFloat(valueInput.max);
+            const minValue = parseFloat(valueInput.min);
+            if (currentValue > maxValue || currentValue < minValue) {
+              valueInput.dataset.previousValue = valueInput.dataset.previousValue ?? "";
+              valueInput.value = valueInput.dataset.previousValue;
+            } else {
+              valueInput.dataset.previousValue = valueInput.value;
+            }
           });
         } else {
           valueInput.type = "text";
@@ -136,11 +182,11 @@ export default class ConfigEditorController implements TabController {
     }
   }
   private reloadParameters() {
-    let params = window.log.getString("NT:/OxConfig/Params", Infinity, Infinity);
-    if (params == null || params == undefined) return;
-    let paramsRaw = JSON.parse(params.values[0]);
+    let params = getOrDefault(window.log, "NT:/OxConfig/Params", LoggableType.String, Infinity, "");
+    if (params == "") return;
+    let paramsRaw = JSON.parse(params);
     this.loadModes();
-    if (JSON.stringify(this.oldArr) == params.values[0]) return;
+    if (JSON.stringify(this.oldArr) == params) return;
     this.hasLoaded = true;
 
     this.oldArr = paramsRaw;
@@ -173,6 +219,7 @@ export default class ConfigEditorController implements TabController {
       if (highlighted == null) continue;
       this.parametersSearched.set(highlighted, value);
     }
+    this.parametersSearched = new Map([...this.parametersSearched].sort());
     this.displayParams();
   }
   periodic() {
@@ -190,6 +237,16 @@ export default class ConfigEditorController implements TabController {
         this.NO_DEPLOY_WARNING.style.display = "none";
         this.DEPLOY_DIR.innerHTML = this.curDeployDir;
       }
+    }
+
+    if (this.curDeployDir == null) return;
+
+    let split = getOrDefault(window.log, "NT:/OxConfig/Raw", LoggableType.String, Infinity, "");
+    if (split == "") return;
+    split = split.split(",");
+    if (split[0] != this.oldRawTimestamp) {
+      this.oldRawTimestamp = split.shift();
+      window.writeOxConfig(this.curDeployDir, this.oldRawTimestamp, split.join(","));
     }
   }
 
@@ -210,9 +267,9 @@ export default class ConfigEditorController implements TabController {
   }
 
   private loadModes() {
-    let modesRaw = window.log.getString("NT:/OxConfig/Modes", Infinity, Infinity);
-    if (modesRaw != null) {
-      let tempModes = modesRaw.values[0].split(",");
+    let modesRaw = getOrDefault(window.log, "NT:/OxConfig/Modes", LoggableType.String, Infinity, "");
+    if (modesRaw != "") {
+      let tempModes = modesRaw.split(",");
       if (tempModes.length > 0 && JSON.stringify(this.modes) != JSON.stringify(tempModes)) {
         this.modes = tempModes;
         this.PARAMETER_TABLE_HEADERS.innerHTML = "";
@@ -240,9 +297,8 @@ export default class ConfigEditorController implements TabController {
       }
     }
 
-    let mode = window.log.getString("NT:/OxConfig/CurrentMode", Infinity, Infinity)?.values[0];
-
-    if (mode != null && this.mode != mode) {
+    let mode = getOrDefault(window.log, "NT:/OxConfig/CurrentMode", LoggableType.String, Infinity, "");
+    if (mode != "" && this.mode != mode) {
       (this.MODE_DROPDOWN as HTMLSelectElement).value = mode;
       this.mode = mode;
     }

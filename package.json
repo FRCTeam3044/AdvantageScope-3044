@@ -15,6 +15,7 @@
     "compile": "rollup -c --configMain && rollup -c --configLargeRenderers && rollup -c --configSmallRenderers && rollup -c --configWorkers",
     "tabs-compile": "rollup -c --configTabEditing",
     "build": "npm run compile && electron-builder build",
+    "build-linux": "npm run compile && electron-builder build --linux",
     "fast-build": "npm run compile && electron-builder build --dir",
     "watch": "rollup -c -w",
     "format": "prettier --write .",
@@ -119,7 +120,9 @@
     },
     "linux": {
       "target": [
-        "AppImage"
+        "deb",
+        "rpm",
+        "pacman"
       ],
       "icon": "icons/app/app-icon.icns",
       "category": "Utility"

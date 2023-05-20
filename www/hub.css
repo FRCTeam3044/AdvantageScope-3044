@@ -1696,30 +1696,6 @@ td.active {
   font-size: 14px;
   width: 100%;
 }
-
-.config-editor button {
-  color: #fff;
-  width: 75px;
-  height: 30px;
-  text-align: center;
-  text-decoration: none;
-  font-size: 14px;
-  border-radius: 5px;
-  margin: 20px 2px;
-}
-
-#refresh-button {
-  background-color: #c2a91b;
-}
-
-#refresh-button:hover {
-  background-color: #b89b17;
-}
-
-#refresh-button:active {
-  background-color: #a88b14;
-}
-
 .tuning-canvas {
   width: 65%;
 }
@@ -1765,7 +1741,8 @@ select {
   padding: 50px;
   padding-top: 10px;
 }
-.param-table td div {
+.param-table td div,
+.tuning-table td div {
   width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1822,6 +1799,13 @@ select {
   display: none;
 }
 
+.success {
+  background-color: rgba(38, 255, 67, 0.5);
+  border: 2px solid limegreen;
+  opacity: 1;
+  transition: opacity 0.5s linear;
+}
+
 .warning-container {
   position: fixed;
   bottom: 0;
@@ -1836,6 +1820,11 @@ select {
 .warning-prefix {
   font-weight: bolder;
   color: #f8d330;
+}
+
+.success-prefix {
+  font-weight: bolder;
+  color: #93ff7d;
 }
 
 .warning-text {
@@ -1870,15 +1859,17 @@ select {
   border: 2px solid #222;
   text-align: center;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
 }
 
+.deploy-dir {
+  position: relative;
+}
 /* Style for the extra information */
 .extra-info {
   display: none;
   position: absolute;
-  top: 5px;
   left: 10px;
   font-size: small;
   padding: 6px;
@@ -1915,8 +1906,47 @@ select {
   margin-left: 8px;
 }
 
-.extra-info-tuner {
-  left: unset;
-  top: -10px;
-  right: 30px;
+.controller-dropdown {
+  margin-top: 25px;
+}
+
+td input::-webkit-outer-spin-button,
+td input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.copy-one {
+  color: #fff;
+  width: fit-content;
+  height: 30px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 14px;
+  border-radius: 5px;
+  margin: 10px 0 0 0;
+  background-color: #1987b9;
+  padding: 5px;
+  width: fit-content;
+}
+
+.copy-all {
+  color: #fff;
+  width: fit-content;
+  height: 30px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 14px;
+  border-radius: 5px;
+  margin: 2px 0;
+  background-color: #b42006;
+  padding: 5px;
+}
+
+.copy-header {
+  margin-top: 50px;
+}
+
+.tuner-copy-mode {
+  margin-bottom: 20px;
 }

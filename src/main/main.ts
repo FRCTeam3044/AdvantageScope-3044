@@ -6,6 +6,7 @@ import {
   dialog,
   Menu,
   MenuItem,
+  MessageBoxOptions,
   MessageChannelMain,
   MessagePortMain,
   nativeTheme,
@@ -48,6 +49,7 @@ import { createExtraFRCDataFolder, loadFRCData } from "./frcDataUtil";
 import StateTracker from "./StateTracker";
 import UpdateChecker from "./UpdateChecker";
 import videoExtensions from "./videoExtensions";
+import { OpenDialogOptions } from "electron/main";
 
 // Global variables
 let hubWindows: BrowserWindow[] = []; // Ordered by last focus time (recent first)
@@ -147,6 +149,41 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
         detail: message.data.content,
         icon: WINDOW_ICON
       });
+      break;
+
+    case "confirm-copy":
+      let options: MessageBoxOptions = {
+        title: message.data.title,
+        message: message.data.message,
+        buttons: ["Cancel", "Confirm"],
+        defaultId: 0,
+        cancelId: 0,
+        icon: WINDOW_ICON
+      };
+      if (message.data.type == "all") options.checkboxLabel = "I understand the consequences of this action.";
+      // Add checkbox for safety
+      dialog.showMessageBox(window, options).then((result) => {
+        if (
+          result.response == 1 &&
+          ((message.data.type == "all" && result.checkboxChecked) || message.data.type != "all")
+        ) {
+          sendMessage(window, "confirm-copy", message.data);
+        }
+      });
+      break;
+    case "write-oxconfig":
+      if (fs.existsSync(message.data.deployDir + "/config.yml")) {
+        fs.writeFile(message.data.deployDir + "/config.yml", message.data.config, (err) => {
+          if (err) {
+            console.error(err);
+            sendMessage(window, "write-oxconfig", "writeerror");
+          } else {
+            sendMessage(window, "write-oxconfig", "success");
+          }
+        });
+      } else {
+        sendMessage(window, "write-oxconfig", "noexist");
+      }
       break;
 
     case "save-state":
@@ -1322,8 +1359,7 @@ function createHubWindow() {
     icon: WINDOW_ICON,
     show: false,
     webPreferences: {
-      sandbox: false,
-      preload: path.join(__dirname, "preloadMain.js")
+      preload: path.join(__dirname, "preload.js")
     }
   };
 

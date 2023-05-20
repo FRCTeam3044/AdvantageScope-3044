@@ -15,8 +15,7 @@ const bundle = (input, output, external = []) => ({
 
 const mainBundles = [
   bundle("main/main.ts", "main.js", ["electron", "electron-fetch", "fs", "jsonfile", "net", "os", "path", "ssh2"]),
-  bundle("preload.ts", "preload.js", ["electron"]),
-  bundle("preloadMain.ts", "preloadMain.js", ["electron"])
+  bundle("preload.ts", "preload.js", ["electron"])
 ];
 const largeRendererBundles = [bundle("hub/hub.ts", "hub.js"), bundle("satellite.ts", "satellite.js")];
 const tabEditingBundle = [bundle("hub/hub.ts", "hub.js")];

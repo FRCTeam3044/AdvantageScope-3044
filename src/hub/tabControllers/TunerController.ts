@@ -1,7 +1,7 @@
 import { AllColors } from "../../shared/Colors";
 import { LineGraphState } from "../../shared/HubState";
 import LoggableType from "../../shared/log/LoggableType";
-import { getLogValueText } from "../../shared/log/LogUtil";
+import { getLogValueText, getOrDefault } from "../../shared/log/LogUtil";
 import { LogValueSetAny, LogValueSetNumber } from "../../shared/log/LogValueSets";
 import TabType from "../../shared/TabType";
 import { convertWithPreset, UnitConversionPreset } from "../../shared/units";
@@ -23,14 +23,16 @@ export default class TunerController implements TabController {
   private CANVAS_CONTAINER: HTMLElement;
   private CANVAS: HTMLCanvasElement;
   private SCROLL_OVERLAY: HTMLElement;
-  private CONTROLLER_DROPDOWN: HTMLElement;
+  private CONTROLLER_DROPDOWN: HTMLSelectElement;
   private PARAMETER_TABLE: HTMLElement;
-  private CUR_MODE_DROPDOWN: HTMLElement;
-  private EDIT_MODE_DROPDOWN: HTMLElement;
+  private CUR_MODE_DROPDOWN: HTMLSelectElement;
+  private EDIT_MODE_DROPDOWN: HTMLSelectElement;
+  private COPY_MODE_DROPDOWN: HTMLSelectElement;
   private DEPLOY_DIR: HTMLElement;
   private WARNING_DIV: HTMLElement;
   private NO_DEPLOY_WARNING: HTMLElement;
   private FAILED_DEPLOY_WARNING: HTMLElement;
+  private SUCCESS_WARNING: HTMLElement;
 
   private LEFT_LIST: HTMLElement;
   private DISCRETE_LIST: HTMLElement;
@@ -48,6 +50,8 @@ export default class TunerController implements TabController {
   private curController: string = "";
   private hasLoaded = false;
   private oldRawTimestamp: string = "0";
+
+  private successLeaveTimeout: NodeJS.Timeout | null = null;
 
   private leftFields: {
     key: string;
@@ -103,27 +107,59 @@ export default class TunerController implements TabController {
     this.RIGHT_DRAG_TARGET = content.getElementsByClassName("legend-right")[1] as HTMLElement;
 
     // tuner code
-    this.CONTROLLER_DROPDOWN = content.getElementsByClassName("controller-dropdown")[0] as HTMLElement;
+    this.CONTROLLER_DROPDOWN = content.getElementsByClassName("controller-dropdown")[0] as HTMLSelectElement;
     this.PARAMETER_TABLE = content.getElementsByClassName("tuning-table")[0] as HTMLElement;
-    this.CUR_MODE_DROPDOWN = content.getElementsByClassName("mode-dropdown")[0] as HTMLElement;
-    this.EDIT_MODE_DROPDOWN = content.getElementsByClassName("tuner-mode")[0] as HTMLElement;
+    this.CUR_MODE_DROPDOWN = content.getElementsByClassName("mode-dropdown")[0] as HTMLSelectElement;
+    this.EDIT_MODE_DROPDOWN = content.getElementsByClassName("tuner-mode")[0] as HTMLSelectElement;
+    this.COPY_MODE_DROPDOWN = content.getElementsByClassName("tuner-copy-mode")[0] as HTMLSelectElement;
     this.DEPLOY_DIR = content.getElementsByClassName("deploy-dir-path")[0] as HTMLElement;
 
     this.WARNING_DIV = content.getElementsByClassName("warning")[0] as HTMLElement;
     this.NO_DEPLOY_WARNING = content.getElementsByClassName("warning")[1] as HTMLElement;
     this.FAILED_DEPLOY_WARNING = content.getElementsByClassName("warning")[2] as HTMLElement;
+    this.SUCCESS_WARNING = content.getElementsByClassName("warning")[3] as HTMLElement;
 
     this.CONTROLLER_DROPDOWN.addEventListener("change", () => {
-      this.showController((this.CONTROLLER_DROPDOWN as HTMLSelectElement).value);
-      this.curController = (this.CONTROLLER_DROPDOWN as HTMLSelectElement).value;
+      this.showController(this.CONTROLLER_DROPDOWN.value);
+      this.curController = this.CONTROLLER_DROPDOWN.value;
     });
 
     this.EDIT_MODE_DROPDOWN.addEventListener("change", () => {
-      this.showController((this.CONTROLLER_DROPDOWN as HTMLSelectElement).value);
+      this.showController(this.CONTROLLER_DROPDOWN.value);
     });
 
     this.CUR_MODE_DROPDOWN.addEventListener("change", (e: Event) => {
-      window.setNt4("/OxConfig/ModeSetter", (this.CUR_MODE_DROPDOWN as HTMLSelectElement).value);
+      window.setNt4("/OxConfig/ModeSetter", this.CUR_MODE_DROPDOWN.value);
+    });
+
+    (content.getElementsByClassName("copy-one")[0] as HTMLButtonElement).addEventListener("click", () => {
+      let source = this.COPY_MODE_DROPDOWN.value ?? "";
+      let dist = this.EDIT_MODE_DROPDOWN.value ?? "";
+      let controller = this.curController;
+      if (source == "" || dist == "" || controller == "" || controller == "failed") return;
+      window.sendMainMessage("confirm-copy", {
+        type: "one",
+        source,
+        dist,
+        controller,
+        title: "Copy To One Mode",
+        message:
+          "This action will overwrite all data for the selected edit mode on the selected controller, replacing it with the data for the currently selected copy mode. This action is irreversible."
+      });
+    });
+
+    (content.getElementsByClassName("copy-all")[0] as HTMLButtonElement).addEventListener("click", () => {
+      let source = this.EDIT_MODE_DROPDOWN.value ?? "";
+      let controller = this.curController;
+      if (source == "" || controller == "" || controller == "failed") return;
+      window.sendMainMessage("confirm-copy", {
+        type: "all",
+        source,
+        controller,
+        title: "Copy To All Modes",
+        message:
+          "This action will overwrite all data for other modes on the selected controller, replacing them with the data for the currently selected edit mode. This action is irreversible."
+      });
     });
 
     // Scroll handling
@@ -208,6 +244,43 @@ export default class TunerController implements TabController {
         unitConversion: this.rightUnitConversion
       });
     });
+  }
+
+  confirmCopyAll(data: any) {
+    window.setNt4("/OxConfig/ClassSetter", `copyAll,${data.controller},${data.source}`);
+  }
+
+  confirmCopyOne(data: any) {
+    window.setNt4("/OxConfig/ClassSetter", `copyOne,${data.controller},${data.source},${data.dist}`);
+  }
+
+  writeResult(result: string) {
+    if (result != "noexist") {
+      this.FAILED_DEPLOY_WARNING.style.display = "none";
+      if (result == "success") {
+        this.SUCCESS_WARNING.style.opacity = "1";
+        this.SUCCESS_WARNING.style.display = "block";
+        if (this.successLeaveTimeout != null) clearTimeout(this.successLeaveTimeout);
+        this.successLeaveTimeout = setTimeout(() => {
+          this.SUCCESS_WARNING.style.opacity = "0";
+          setTimeout(() => {
+            this.SUCCESS_WARNING.style.display = "none";
+          }, 500);
+        }, 2500);
+      } else if (result == "writeerror") {
+        (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
+          "Failed to write file, ensure you have permission.";
+        this.SUCCESS_WARNING.style.opacity = "0";
+        this.SUCCESS_WARNING.style.display = "none";
+        this.FAILED_DEPLOY_WARNING.style.display = "block";
+      }
+    } else {
+      (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
+        "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
+      this.SUCCESS_WARNING.style.opacity = "0";
+      this.SUCCESS_WARNING.style.display = "none";
+      this.FAILED_DEPLOY_WARNING.style.display = "block";
+    }
   }
 
   saveState(): LineGraphState {
@@ -337,31 +410,6 @@ export default class TunerController implements TabController {
     this.reloadControllerList();
     this.updateScroll();
 
-    if (this.curDeployDir != null) {
-      let raw = window.log.getString("NT:/OxConfig/Raw", Infinity, Infinity);
-      if (raw != null) {
-        let split = raw.values[0].split(",");
-        if (split[0] != this.oldRawTimestamp) {
-          this.oldRawTimestamp = split[0];
-          if (window.deployWriter.configExistsSync(this.curDeployDir)) {
-            this.FAILED_DEPLOY_WARNING.style.display = "none";
-            split.shift();
-            let config = split.join(",");
-            window.deployWriter.writeConfig(this.curDeployDir, config).catch((e) => {
-              console.error(e);
-              (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
-                "Failed to write file, ensure you have permission.";
-              this.FAILED_DEPLOY_WARNING.style.display = "block";
-            });
-          } else {
-            (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
-              "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
-            this.FAILED_DEPLOY_WARNING.style.display = "block";
-          }
-        }
-      }
-    }
-
     // Update field strikethrough
     let availableFields = window.log.getFieldKeys();
     [
@@ -387,20 +435,61 @@ export default class TunerController implements TabController {
     this.PARAMETER_TABLE.innerHTML = "";
     for (let i = 0; i < parameters.length; i++) {
       let tr = document.createElement("tr");
+      // Parameter Name
       let td1 = document.createElement("td");
-      td1.innerText = parameters[i][0];
+      // Need a div for truncation
+      let nameDiv = document.createElement("div");
+      nameDiv.innerText = parameters[i][0];
+      td1.appendChild(nameDiv);
+
+      // Value of parameter
       let td2 = document.createElement("td");
       let input = document.createElement("input");
       let type = parameters[i][2].toLowerCase();
-      let value = parameters[i][this.modes.indexOf((this.EDIT_MODE_DROPDOWN as HTMLSelectElement).value) + 3];
+      let value = parameters[i][this.modes.indexOf(this.EDIT_MODE_DROPDOWN.value) + 3];
       if (type == "boolean") {
         input.type = "checkbox";
         input.checked = value == "true";
       } else if (["integer", "short", "long", "double"].includes(type)) {
         input.type = "number";
         input.value = value;
+        switch (type) {
+          case "integer":
+            input.step = "1";
+            input.max = "2147483647";
+            input.min = "-2147483648";
+            break;
+          case "short":
+            input.step = "1";
+            input.max = "32767";
+            input.min = "-32768";
+            break;
+          case "long":
+            input.step = "1";
+            input.max = "9223372036854775807";
+            input.min = "-9223372036854775808";
+            break;
+          case "double":
+            input.step = "0.000000000000001";
+            input.max = "1.7976931348623157E308";
+            input.min = "-1.7976931348623157E308";
+            break;
+        }
         input.addEventListener("keypress", function (evt: KeyboardEvent) {
-          if (evt.key == "e" || evt.key == "+" || evt.key == "-") evt.preventDefault();
+          if (evt.key == "e" || evt.key == "+") evt.preventDefault();
+          if (["integer", "short", "long"].includes(type) && evt.key == ".") evt.preventDefault();
+        });
+
+        input.addEventListener("input", function (evt: Event) {
+          const currentValue = parseFloat(input.value);
+          const maxValue = parseFloat(input.max);
+          const minValue = parseFloat(input.min);
+          if (currentValue > maxValue || currentValue < minValue) {
+            input.dataset.previousValue = input.dataset.previousValue ?? "";
+            input.value = input.dataset.previousValue;
+          } else {
+            input.dataset.previousValue = input.value;
+          }
         });
       } else {
         input.type = "text";
@@ -409,8 +498,8 @@ export default class TunerController implements TabController {
 
       input.addEventListener("change", () => {
         window.setNt4(
-          "/OxConfig/SingleKeySetter",
-          parameters[i][1] + "," + (this.EDIT_MODE_DROPDOWN as HTMLSelectElement).value + "," + input.value
+          "/OxConfig/ClassSetter",
+          "single," + parameters[i][1] + "," + this.EDIT_MODE_DROPDOWN.value + "," + input.value
         );
       });
       td2.appendChild(input);
@@ -422,20 +511,21 @@ export default class TunerController implements TabController {
 
   private reloadControllerList() {
     this.loadModes();
-    let controllers = window.log.getString("NT:/OxConfig/Classes", Infinity, Infinity);
-    if (controllers == null || controllers.values[0] == null) {
+
+    let controllers = getOrDefault(window.log, "NT:/OxConfig/Classes", LoggableType.String, Infinity, "");
+    if (controllers == "") {
       let option = document.createElement("option");
       option.value = "failed";
       option.innerText = "Failed to retrieve list";
       this.CONTROLLER_DROPDOWN.appendChild(option);
       return;
     }
-    if (controllers.values[0] == JSON.stringify(this.controllerList)) return;
+    if (controllers == JSON.stringify(this.controllerList)) return;
     this.hasLoaded = true;
     this.CONTROLLER_DROPDOWN.innerHTML = "";
     let controllerList;
     try {
-      controllerList = JSON.parse(controllers.values[0]);
+      controllerList = JSON.parse(controllers);
     } catch (e) {
       let option = document.createElement("option");
       option.value = "failed";
@@ -453,7 +543,7 @@ export default class TunerController implements TabController {
     }
     if (controllerList.find((c: any) => c[1] == this.curController) != null) {
       this.showController(this.curController);
-      (this.CONTROLLER_DROPDOWN as HTMLSelectElement).value = this.curController;
+      this.CONTROLLER_DROPDOWN.value = this.curController;
     } else {
       this.showController(controllerList[0][1]);
       this.curController = controllerList[0][1];
@@ -816,6 +906,17 @@ export default class TunerController implements TabController {
         this.curDeployDir = window.preferences?.deployDirectory;
         this.NO_DEPLOY_WARNING.style.display = "none";
         this.DEPLOY_DIR.innerHTML = this.curDeployDir;
+      }
+    }
+
+    if (this.curDeployDir != null) {
+      let split = getOrDefault(window.log, "NT:/OxConfig/Raw", LoggableType.String, Infinity, "");
+      if (split != "") {
+        split = split.split(",");
+        if (split[0] != this.oldRawTimestamp) {
+          this.oldRawTimestamp = split.shift();
+          window.writeOxConfig(this.curDeployDir, this.oldRawTimestamp, split.join(","));
+        }
       }
     }
     // Scroll sensor periodic
@@ -1267,13 +1368,14 @@ export default class TunerController implements TabController {
     });
   }
   private loadModes() {
-    let modesRaw = window.log.getString("NT:/OxConfig/Modes", Infinity, Infinity);
-    if (modesRaw != null) {
-      let tempModes = modesRaw.values[0].split(",");
+    let modesRaw = getOrDefault(window.log, "NT:/OxConfig/Modes", LoggableType.String, Infinity, "");
+    if (modesRaw != "") {
+      let tempModes = modesRaw.split(",");
       if (tempModes.length > 0 && JSON.stringify(this.modes) != JSON.stringify(tempModes)) {
         this.modes = tempModes;
         this.CUR_MODE_DROPDOWN.innerHTML = "";
         this.EDIT_MODE_DROPDOWN.innerHTML = "";
+        this.COPY_MODE_DROPDOWN.innerHTML = "";
         for (let mode of this.modes) {
           let prettyMode = mode.charAt(0).toUpperCase();
           prettyMode += mode.slice(1);
@@ -1283,14 +1385,15 @@ export default class TunerController implements TabController {
           choice.innerText = prettyMode;
           this.CUR_MODE_DROPDOWN.appendChild(choice);
           this.EDIT_MODE_DROPDOWN.appendChild(choice.cloneNode(true) as HTMLElement);
+          this.COPY_MODE_DROPDOWN.appendChild(choice.cloneNode(true) as HTMLElement);
         }
       }
     }
 
-    let mode = window.log.getString("NT:/OxConfig/CurrentMode", Infinity, Infinity)?.values[0];
+    let mode = getOrDefault(window.log, "NT:/OxConfig/CurrentMode", LoggableType.String, Infinity, "");
 
-    if (mode != null && this.mode != mode) {
-      (this.CUR_MODE_DROPDOWN as HTMLSelectElement).value = mode;
+    if (mode != "" && this.mode != mode) {
+      this.CUR_MODE_DROPDOWN.value = mode;
       this.mode = mode;
     }
   }

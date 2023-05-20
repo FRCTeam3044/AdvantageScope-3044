@@ -893,7 +893,7 @@
                 <option value="failed">Not connected</option>
               </select>
               <br/>
-              <h2>Choose a controller</h2>
+              <h3 class="mode-text">Controller</h3>
               <select class="dropdown controller-dropdown">
                 <option value="failed">Not yet refreshed</option>
               </select>
@@ -908,6 +908,15 @@
                   <tbody class="tuning-table"></tbody>
                 </table>
               </div>
+              <h2 class="copy-header">Copying</h2>
+            </br>
+              <button class="copy-one">Copy From Selected Mode</button>
+              <select class="dropdown mode-dropdown tuner-copy-mode">
+                <option value="failed">Not connected</option>
+              </select>
+            </br>
+            <button class="copy-all">Copy To All Modes</button>
+
               <div class="warning-container">
                <div class="warning">
                 <h3 class="warning-text"><span class="warning-prefix">⚠️ Warning! </span>The robot is disconnected. All changes from now until reconnection will be lost.</h3>
@@ -917,6 +926,9 @@
               </div>
               <div class="warning">
                 <h3 class="warning-text"><span class="warning-prefix">⚠️ Warning! </span><span class="warning-content"> Failed to write file: Deploy directory is missing or doesn't contain config.yml.</span></h3>
+              </div>
+              <div class="warning success">
+                <h3 class="warning-text "><span class="success-prefix">✅ Success! </span><span class="warning-content"> Wrote config to deploy folder.</span></h3>
               </div>
               </div>
             </div>
@@ -942,6 +954,9 @@
               </div>
               <div class="warning">
                 <h3 class="warning-text"><span class="warning-prefix">⚠️ Warning! </span><span class="warning-content">Failed to write file: Deploy directory is missing or doesn't contain config.yml.</span></h3>
+              </div>
+              <div class="warning success">
+                <h3 class="warning-text "><span class="success-prefix">✅ Success! </span><span class="warning-content"> Wrote config to deploy folder.</span></h3>
               </div>
               </div>
               <div id="search">

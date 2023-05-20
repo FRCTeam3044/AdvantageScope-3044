@@ -21,11 +21,6 @@ const DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
 const UPDATE_BUTTON = document.getElementsByClassName("update")[0] as HTMLElement;
 // Global variables
 declare global {
-  interface IElectronAPI {
-    configExistsSync: (deployDir: string) => boolean;
-    writeConfig: (deployDir: string, config: string) => Promise<void>;
-  }
-
   interface Window {
     log: Log;
     preferences: Preferences | null;
@@ -41,11 +36,11 @@ declare global {
     sidebar: Sidebar;
     tabs: Tabs;
     messagePort: MessagePort | null;
-    deployWriter: IElectronAPI;
     setNt4: (topic: string, value: any) => void;
     isConnected: () => boolean;
     sendMainMessage: (name: string, data?: any) => void;
     startDrag: (x: number, y: number, offsetX: number, offsetY: number, data: any) => void;
+    writeOxConfig(deployDir: string, timestamp: string, config: string): void;
 
     override3dRobotConfig: (title: string, rotations: Config3d_Rotation[], position: [number, number, number]) => void;
   }
@@ -63,16 +58,6 @@ window.selection = new Selection();
 window.sidebar = new Sidebar();
 window.tabs = new Tabs();
 window.messagePort = null;
-window.setNt4 = (topic: string, value: any) => {
-  if (liveSource instanceof NT4Source) {
-    liveSource.publishValue(topic, value);
-  }
-};
-
-window.isConnected = () => {
-  if (!(liveSource instanceof NT4Source)) return false;
-  return (liveSource as NT4Source).isConnected();
-};
 
 let historicalSource: HistoricalDataSource | null;
 let liveSource: LiveDataSource | null;
@@ -85,6 +70,7 @@ let dragOffsetY = 0;
 let dragLastX = 0;
 let dragLastY = 0;
 let dragData: any = null;
+let oldOxConfigTimestamp = "";
 
 // WINDOW UTILITIES
 
@@ -140,6 +126,30 @@ window.override3dRobotConfig = (title, rotations, position) => {
   }
   window.frcData.robots[index].rotations = rotations;
   window.frcData.robots[index].position = position;
+};
+
+// Set Nt4 values
+
+window.setNt4 = (topic: string, value: any) => {
+  if (liveSource instanceof NT4Source) {
+    liveSource.publishValue(topic, value);
+  }
+};
+
+// Check if connected via NT4
+window.isConnected = () => {
+  if (!(liveSource instanceof NT4Source)) return false;
+  return (liveSource as NT4Source).isConnected();
+};
+
+// Write config to deploy dir
+window.writeOxConfig = (deployDir: string, timestamp: string, config: string) => {
+  if (timestamp == oldOxConfigTimestamp) return;
+  oldOxConfigTimestamp = timestamp;
+  window.sendMainMessage("write-oxconfig", {
+    deployDir,
+    config
+  });
 };
 
 // MANAGE STATE
@@ -404,6 +414,15 @@ function handleMainMessage(message: NamedMessage) {
     case "set-fullscreen":
       window.isFullscreen = message.data;
       updateFancyWindow();
+      break;
+
+    case "confirm-copy":
+      if (message.data.type == "all") window.tabs.confirmCopy(true, message.data);
+      else window.tabs.confirmCopy(false, message.data);
+      break;
+
+    case "write-oxconfig":
+      window.tabs.alertOxConfigWriteResult(message.data);
       break;
 
     case "set-focused":
