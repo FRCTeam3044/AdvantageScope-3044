@@ -30,11 +30,14 @@ AdvantageScope supports many ways to view and analyze data, organized into tabs.
 - 🔵 [Points](/docs/tabs/POINTS.md)
 - 🔍 [Metadata](/docs/tabs/METADATA.md)
 - 🎛 [Tuner](/docs/tabs/TUNER.md)
+- 🛠️ [Config Editor](/docs/tabs/CONFIG-EDITOR.md)
 
 ## Other Links
 
 - [AdvantageKit Documentation](https://github.com/Mechanical-Advantage/AdvantageKit/blob/main/README.md)
 - [AdvantageScope Repository](https://github.com/Mechanical-Advantage/AdvantageScope/)
+- [3044 AdvantageScope Repository](https://github.com/FRCTeam3044/AdvantageScope-3044/)
+- [OxConfig](https://github.com/FRCTeam3044/OxConfig/)
 - [Sample Log Data](https://drive.google.com/drive/folders/14Bbp10csQPjh2VcApNM07lwt2v77-z_I?usp=share_link) (6328 @ 2022 Championship)
 - [Custom Fields/Robots/Joysticks](/docs/CUSTOM-CONFIG.md)
 - [Converting Onshape & STEP Files to glTF](/docs/GLTF-CONVERT.md)
