@@ -494,6 +494,18 @@ export default class TunerController implements TabController {
       } else {
         input.type = "text";
         input.value = value;
+        input.addEventListener("input", () => {
+          var c = input.selectionStart;
+          if (c == null) return;
+          let i = 0;
+          while (input.value.includes(",")) {
+            input.value = input.value.replace(",", "");
+            c--;
+            i++;
+            if (i > 25) break;
+          }
+          input.setSelectionRange(c, c);
+        });
       }
 
       input.addEventListener("change", () => {

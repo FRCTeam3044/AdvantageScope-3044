@@ -113,6 +113,19 @@ export default class ConfigEditorController implements TabController {
       row.appendChild(keyCell);
       row.appendChild(commentCell);
 
+      commentInput.addEventListener("input", () => {
+        var c = commentInput.selectionStart;
+        if (c == null) return;
+        let i = 0;
+        while (commentInput.value.includes(",")) {
+          commentInput.value = commentInput.value.replace(",", "");
+          c--;
+          i++;
+          if (i > 25) break;
+        }
+        commentInput.setSelectionRange(c, c);
+      });
+
       for (let modeIndex in this.modes) {
         let valueInput = document.createElement("input");
         inputElements.push(valueInput);
@@ -165,6 +178,18 @@ export default class ConfigEditorController implements TabController {
         } else {
           valueInput.type = "text";
           valueInput.value = value;
+          valueInput.addEventListener("input", () => {
+            var c = valueInput.selectionStart;
+            if (c == null) return;
+            let i = 0;
+            while (valueInput.value.includes(",")) {
+              valueInput.value = valueInput.value.replace(",", "");
+              c--;
+              i++;
+              if (i > 25) break;
+            }
+            valueInput.setSelectionRange(c, c);
+          });
         }
 
         let valueCell = document.createElement("td");
