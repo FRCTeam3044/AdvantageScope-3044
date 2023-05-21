@@ -1,8 +1,7 @@
-name: Build
-
+name: Compile
 on:
-  push:
-  pull_request:
+  release:
+    types: [ published ]
 
 jobs:
   format:
@@ -28,17 +27,17 @@ jobs:
         host:
           - { os: macos-latest, shortName: "mac", displayName: "macOS", artifactPath: "dist/AdvantageScope-*.dmg" }
           - {
-              os: ubuntu-latest,
-              shortName: "linux",
-              displayName: "Linux",
-              artifactPath: "dist/*.deb\ndist/*.rpm\ndist/*.pacman"
-            }
+            os: ubuntu-latest,
+            shortName: "linux",
+            displayName: "Linux",
+            artifactPath: "dist/*.deb\ndist/*.rpm\ndist/*.pacman"
+          }
           - {
-              os: windows-latest,
-              shortName: "win",
-              displayName: "Windows",
-              artifactPath: "dist/AdvantageScope Setup *.exe"
-            }
+            os: windows-latest,
+            shortName: "win",
+            displayName: "Windows",
+            artifactPath: "dist/AdvantageScope Setup *.exe"
+          }
         arch: ["x64", "arm64"]
 
     name: Build for ${{ matrix.host.displayName }} (${{ matrix.arch }})
@@ -57,11 +56,6 @@ jobs:
       - name: Install Linux dependencies
         if: matrix.host.os == 'ubuntu-latest'
         run: sudo apt-get update; sudo apt-get install --no-install-recommends -y libarchive-tools
-      - name: Prepare macOS certificate
-        if: matrix.host.os == 'macos-latest' && github.event_name == 'push'
-        run: |
-          echo "CSC_LINK=${{ secrets.MACOS_CERTIFICATE }}" >> $GITHUB_ENV
-          echo "CSC_KEY_PASSWORD=${{ secrets.MACOS_CERTIFICATE_PWD }}" >> $GITHUB_ENV
       - name: Build app
         run: npm run build -- --${{ matrix.arch }} --publish never
         env:
@@ -69,5 +63,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: advantagescope-${{ matrix.host.shortname }}-${{ matrix.arch }}-dev
+          name: advantagescope-${{ matrix.host.shortname }}-${{ matrix.arch }}-oxconfig
           path: ${{ matrix.host.artifactPath }}
