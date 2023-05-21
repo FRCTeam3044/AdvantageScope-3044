@@ -1,1 +1,10 @@
-{"version":"2.3.0-oxconfig","name":"advantagescope","dependencies":{"electron-fetch":{"version":"1.9.1"},"fuzzysort":{"version":"2.0.4"},"jsonfile":{"version":"6.1.0"},"ssh2":{"version":"1.11.0"}}}
+{
+  "version": "2.3.0-oxconfig",
+  "name": "advantagescope",
+  "dependencies": {
+    "electron-fetch": { "version": "1.9.1" },
+    "fuzzysort": { "version": "2.0.4" },
+    "jsonfile": { "version": "6.1.0" },
+    "ssh2": { "version": "1.11.0" }
+  }
+}

@@ -1,7 +1,7 @@
 name: Compile
 on:
   release:
-    types: [ published ]
+    types: [published]
 
 jobs:
   format:
@@ -27,17 +27,17 @@ jobs:
         host:
           - { os: macos-latest, shortName: "mac", displayName: "macOS", artifactPath: "dist/AdvantageScope-*.dmg" }
           - {
-            os: ubuntu-latest,
-            shortName: "linux",
-            displayName: "Linux",
-            artifactPath: "dist/*.deb\ndist/*.rpm\ndist/*.pacman"
-          }
+              os: ubuntu-latest,
+              shortName: "linux",
+              displayName: "Linux",
+              artifactPath: "dist/*.deb\ndist/*.rpm\ndist/*.pacman"
+            }
           - {
-            os: windows-latest,
-            shortName: "win",
-            displayName: "Windows",
-            artifactPath: "dist/AdvantageScope Setup *.exe"
-          }
+              os: windows-latest,
+              shortName: "win",
+              displayName: "Windows",
+              artifactPath: "dist/AdvantageScope Setup *.exe"
+            }
         arch: ["x64", "arm64"]
 
     name: Build for ${{ matrix.host.displayName }} (${{ matrix.arch }})
