@@ -1811,7 +1811,14 @@ select {
 
 .success-prefix {
   font-weight: bolder;
-  color: #93ff7d;
+  color: #167903;
+}
+
+@media (prefers-color-scheme: dark) {
+  .success-prefix {
+    font-weight: bolder;
+    color: #93ff7d;
+  }
 }
 
 .warning-text {

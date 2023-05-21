@@ -26,6 +26,8 @@ Under the mode dropdowns, you will find a dropdown for the currently selected co
 
 > Note: Values will not be sent to OxConfig until you press enter or click out of the table.
 
+![Tuner Demo](/docs/resources/tuner/tuner-1.gif)
+
 ## Mode copying
 
 Sometimes, controllers should stay the same in multiple modes, or in all modes. There are two ways to do this.
@@ -37,3 +39,5 @@ There is a button labeled "Copy From Selected Mode" with a dropdown to select a 
 ### Copying to all modes
 
 There is a button labeled "Copy To All Modes". When you click the button, a confirmation prompt will appear. If you click confirm, all values for the currently selected controller for the currently selected edit mode will be copied to all other modes for the selected controller, overwriting their old values. This action is irreversable, so use with caution.
+
+![Tuner Copying Demo](/docs/resources/tuner/tuner-2.gif)

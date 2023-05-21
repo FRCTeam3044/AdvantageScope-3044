@@ -25,3 +25,5 @@ At the top of the page, is a search bar and a mode dropdown. The mode dropdown s
 You will see a large table with Columns for the Parameter name, Comment, and values for all the different modes. Everything except the parameter name is editable and will be updated automatically in the yaml and immediatley in the robot code when you change it.
 
 > Note: Values will not be sent to OxConfig until you press enter or click out of the table.
+
+![Config Editor Demo](/docs/resources/config-editor/config-editor-1.gif)
