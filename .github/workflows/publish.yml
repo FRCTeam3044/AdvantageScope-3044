@@ -25,20 +25,28 @@ jobs:
     strategy:
       matrix:
         host:
-          - { os: macos-latest, shortName: "mac", displayName: "macOS", artifactPath: "dist/AdvantageScope-*.dmg" }
           - {
-              os: ubuntu-latest,
-              shortName: "linux",
-              displayName: "Linux",
-              artifactPath: "dist/*.deb\ndist/*.rpm\ndist/*.pacman"
-            }
+            os: macos-latest,
+            shortName: "mac",
+            displayName: "macOS",
+            artifactExt: "dmg",
+            artifactType: "application/octet-stream"
+          }
           - {
-              os: windows-latest,
-              shortName: "win",
-              displayName: "Windows",
-              artifactPath: "dist/AdvantageScope Setup *.exe"
-            }
-        arch: ["x64", "arm64"]
+            os: ubuntu-latest,
+            shortName: "linux",
+            displayName: "Linux",
+            artifactExt: "zip",
+            artifactType: "application/zip"
+          }
+          - {
+            os: windows-latest,
+            shortName: "win",
+            displayName: "Windows",
+            artifactExt: "exe",
+            artifactType: "application/octet-stream"
+          }
+        arch: [ "x64", "arm64" ]
 
     name: Build for ${{ matrix.host.displayName }} (${{ matrix.arch }})
     runs-on: ${{ matrix.host.os }}
@@ -46,6 +54,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+      - name: Get release info
+        id: get_release_info
+        uses: bruceadams/get-release@v1.2.3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
@@ -53,12 +66,6 @@ jobs:
           cache: "npm"
       - name: Install Node.js dependencies
         run: npm ci
-      - name: "Release: Get release info"
-        id: get_release_info
-        if: github.event_name == 'release'
-        uses: bruceadams/get-release@v1.2.3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Linux dependencies
         if: matrix.host.os == 'ubuntu-latest'
         run: sudo apt-get update; sudo apt-get install --no-install-recommends -y libarchive-tools
@@ -66,12 +73,26 @@ jobs:
         run: npm run build -- --${{ matrix.arch }} --publish never
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+      - name: Prepare macOS artifact
+        if: matrix.host.os == 'macos-latest'
+        run: |
+          mv dist/AdvantageScope-*.dmg artifact
+      - name: Prepare Linux artifact
+        if: matrix.host.os == 'ubuntu-latest'
+        run: |
+          cd dist
+          zip ../artifact.zip ./advantagescope*
+          mv ../artifact.zip ../artifact
+      - name: Prepare Windows artifact
+        if: matrix.host.os == 'windows-latest'
+        run: |
+          Move-Item -Path "dist\AdvantageScope Setup *.exe" -Destination "artifact"
       - name: Upload artifacts
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.get_release_info.outputs.upload_url }}
-          asset_path: ${{ matrix.host.artifactPath }}
-          asset_name: advantagescope-${{ matrix.host.shortname }}-${{ matrix.arch }}-oxconfig
-          asset_content_type: application/zip
+          asset_path: artifact
+          asset_name: advantagescope-oxconfig${{ matrix.host.shortName }}-${{ matrix.arch }}-${{ steps.get_release_info.outputs.tag_name }}.${{ matrix.host.artifactExt }}
+          asset_content_type: ${{ matrix.host.artifactType }}
