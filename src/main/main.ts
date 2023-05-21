@@ -1263,7 +1263,7 @@ function setupMenu() {
         {
           label: "Report a Problem",
           click() {
-            shell.openExternal("https://github.com/" + REPOSITORY + "/issues");
+            shell.openExternal("https://discord.gg/qPqPaFuAgZ");
           }
         },
         {
@@ -1273,7 +1273,13 @@ function setupMenu() {
           }
         },
         {
-          label: "Team Website",
+          label: "3044 Team Website",
+          click() {
+            shell.openExternal("https://frcteam3044.team/");
+          }
+        },
+        {
+          label: "6328 Team Website",
           click() {
             shell.openExternal("https://littletonrobotics.org");
           }

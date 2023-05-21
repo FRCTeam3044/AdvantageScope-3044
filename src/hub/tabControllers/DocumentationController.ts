@@ -113,7 +113,7 @@ export default class DocumentationController implements TabController {
           link.addEventListener("click", () => {
             window.sendMainMessage(
               "open-link",
-              "https://github.com/Mechanical-Advantage/AdvantageScope/blob/main/docs/INDEX.md"
+              "https://github.com/FRCTeam3044/AdvantageScope-3044/blob/main/docs/INDEX.md"
             );
           });
 

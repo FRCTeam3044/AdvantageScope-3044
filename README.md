@@ -4,6 +4,8 @@ AdvantageScope-3044 is a fork of [AdvantageScope](https://github.com/Mechanical-
 
 For current users of AdvantageScope looking to switch for OxConfig, AdvantageScope-3044 will try to stay as up-to-date as possible with the latest AdvantageScope features. It is currently a drop-in replacement, just adding the additional features. There is in-app documentation for the tuner and Config Editor, and it is available in the online documentation.
 
+Questions, suggestions, bug reports, or just want to chat? Come join us on our [Discord!](https://discord.gg/aBMPrADRCm)
+
 AdvantageScope is a robot diagnostics, log review/analysis, and data visualization application for FIRST Robotics Competition teams. It reads logs in WPILOG, DS log, and RLOG file formats, plus live robot data viewing using NT4 or RLOG streaming. AdvantageScope can be used with any WPILib project, but is also optimized for use with our [AdvantageKit](https://github.com/Mechanical-Advantage/AdvantageKit) logging framework.
 
 It includes the following tools:

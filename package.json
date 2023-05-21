@@ -1,12 +1,12 @@
 {
   "name": "advantagescope",
   "productName": "AdvantageScope",
-  "version": "2.3.0",
-  "description": "Robot telemetry application for FRC",
+  "version": "2.3.0-oxconfig",
+  "description": "Robot telemetry application for FRC with extra features for oxconfig (Fork of FRC Team 6328 MechanicalAdvantage's AdvantageScope)",
   "author": {
-    "name": "FRC 6328",
-    "email": "info@littletonrobotics.org",
-    "url": "https://littletonrobotics.org"
+    "name": "nab138 FRC 3044",
+    "email": "nab@nabdev.me",
+    "url": "https://frcteam3044.team"
   },
   "license": "MIT",
   "main": "bundles/main.js",
@@ -15,7 +15,7 @@
     "compile": "rollup -c --configMain && rollup -c --configLargeRenderers && rollup -c --configSmallRenderers && rollup -c --configWorkers",
     "tabs-compile": "rollup -c --configTabEditing",
     "build": "npm run compile && electron-builder build",
-    "build-linux": "npm run compile && electron-builder build --linux",
+    "build-linux": "electron-builder build --linux",
     "fast-build": "npm run compile && electron-builder build --dir",
     "watch": "rollup -c -w",
     "format": "prettier --write .",
