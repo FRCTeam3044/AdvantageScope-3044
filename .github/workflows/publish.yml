@@ -26,27 +26,27 @@ jobs:
       matrix:
         host:
           - {
-            os: macos-latest,
-            shortName: "mac",
-            displayName: "macOS",
-            artifactExt: "dmg",
-            artifactType: "application/octet-stream"
-          }
+              os: macos-latest,
+              shortName: "mac",
+              displayName: "macOS",
+              artifactExt: "dmg",
+              artifactType: "application/octet-stream"
+            }
           - {
-            os: ubuntu-latest,
-            shortName: "linux",
-            displayName: "Linux",
-            artifactExt: "zip",
-            artifactType: "application/zip"
-          }
+              os: ubuntu-latest,
+              shortName: "linux",
+              displayName: "Linux",
+              artifactExt: "zip",
+              artifactType: "application/zip"
+            }
           - {
-            os: windows-latest,
-            shortName: "win",
-            displayName: "Windows",
-            artifactExt: "exe",
-            artifactType: "application/octet-stream"
-          }
-        arch: [ "x64", "arm64" ]
+              os: windows-latest,
+              shortName: "win",
+              displayName: "Windows",
+              artifactExt: "exe",
+              artifactType: "application/octet-stream"
+            }
+        arch: ["x64", "arm64"]
 
     name: Build for ${{ matrix.host.displayName }} (${{ matrix.arch }})
     runs-on: ${{ matrix.host.os }}
