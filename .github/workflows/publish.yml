@@ -53,6 +53,12 @@ jobs:
           cache: "npm"
       - name: Install Node.js dependencies
         run: npm ci
+      - name: "Release: Get release info"
+        id: get_release_info
+        if: github.event_name == 'release'
+        uses: bruceadams/get-release@v1.2.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Linux dependencies
         if: matrix.host.os == 'ubuntu-latest'
         run: sudo apt-get update; sudo apt-get install --no-install-recommends -y libarchive-tools
@@ -61,7 +67,11 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: advantagescope-${{ matrix.host.shortname }}-${{ matrix.arch }}-oxconfig
-          path: ${{ matrix.host.artifactPath }}
+          upload_url: ${{ steps.get_release_info.outputs.upload_url }}
+          asset_path: ${{ matrix.host.artifactPath }}
+          asset_name: advantagescope-${{ matrix.host.shortname }}-${{ matrix.arch }}-oxconfig
+          asset_content_type: application/zip
