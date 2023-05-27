@@ -1737,6 +1737,11 @@ select {
   text-align: left;
 }
 
+.param-table th {
+  min-width: 50px;
+  max-width: 400px;
+}
+
 #search {
   display: flex;
   height: fit-content;
@@ -1827,13 +1832,12 @@ select {
 }
 
 .param-table-header {
-  width: 35%;
+  width: 25%;
 }
 
 .comment-table-header {
   width: 25%;
 }
-
 .param-table-container {
   overflow-y: auto;
   border: 1px solid #fff;
@@ -1943,4 +1947,15 @@ td input::-webkit-inner-spin-button {
 
 .tuner-copy-mode {
   margin-bottom: 20px;
+}
+
+.resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 999;
 }

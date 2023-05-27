@@ -450,7 +450,7 @@ export default class TunerController implements TabController {
       if (type == "boolean") {
         input.type = "checkbox";
         input.checked = value == "true";
-      } else if (["integer", "short", "long", "double"].includes(type)) {
+      } else if (["integer", "short", "long", "double", "float"].includes(type)) {
         input.type = "number";
         input.value = value;
         switch (type) {
@@ -474,6 +474,10 @@ export default class TunerController implements TabController {
             input.max = "1.7976931348623157E308";
             input.min = "-1.7976931348623157E308";
             break;
+          case "float":
+            input.step = "0.000000000000001";
+            input.max = "3.4028235E38";
+            input.min = "-3.4028235E38";
         }
         input.addEventListener("keypress", function (evt: KeyboardEvent) {
           if (evt.key == "e" || evt.key == "+") evt.preventDefault();

@@ -1,4 +1,3 @@
-import { e } from "mathjs";
 import { TabState } from "../../shared/HubState";
 import TabType from "../../shared/TabType";
 import TabController from "../TabController";
@@ -105,11 +104,13 @@ export default class ConfigEditorController implements TabController {
       keyDiv.innerHTML = key;
       keyCell.appendChild(keyDiv);
       let commentCell = document.createElement("td");
+      let commentDiv = document.createElement("div");
       let commentInput = document.createElement("input");
       let param = this.parametersSearched.get(key);
       commentInput.value = param.comment;
       inputElements.push(commentInput);
-      commentCell.appendChild(commentInput);
+      commentCell.appendChild(commentDiv);
+      commentDiv.appendChild(commentInput);
       row.appendChild(keyCell);
       row.appendChild(commentCell);
 
@@ -128,12 +129,14 @@ export default class ConfigEditorController implements TabController {
 
       for (let modeIndex in this.modes) {
         let valueInput = document.createElement("input");
+        let valueDiv = document.createElement("div");
+        valueDiv.appendChild(valueInput);
         inputElements.push(valueInput);
         let value = param.values[modeIndex];
         if (param.type == "boolean") {
           valueInput.type = "checkbox";
           valueInput.checked = value == "true";
-        } else if (["integer", "short", "long", "double"].includes(param.type)) {
+        } else if (["integer", "short", "long", "double", "float"].includes(param.type)) {
           valueInput.type = "number";
           valueInput.value = value;
 
@@ -157,6 +160,11 @@ export default class ConfigEditorController implements TabController {
               valueInput.step = "0.000000000000001";
               valueInput.max = "1.7976931348623157E308";
               valueInput.min = "-1.7976931348623157E308";
+              break;
+            case "float":
+              valueInput.step = "0.000000000000001";
+              valueInput.max = "3.4028235E38";
+              valueInput.min = "-3.4028235E38";
               break;
           }
           valueInput.addEventListener("keypress", function (evt: KeyboardEvent) {
@@ -193,7 +201,7 @@ export default class ConfigEditorController implements TabController {
         }
 
         let valueCell = document.createElement("td");
-        valueCell.appendChild(valueInput);
+        valueCell.appendChild(valueDiv);
         row.appendChild(valueCell);
       }
 
@@ -205,7 +213,67 @@ export default class ConfigEditorController implements TabController {
 
       this.PARAMETER_TABLE.appendChild(row);
     }
+    this.addResizer(this.PARAMETER_TABLE_HEADERS);
+    this.initializeResize(this.PARAMETER_TABLE_HEADERS, this.PARAMETER_TABLE);
   }
+
+  private addResizer(thead: HTMLElement) {
+    const resizableColumns = thead.querySelectorAll("th:not(.no-resize)");
+    resizableColumns.forEach((column) => {
+      if (!column.querySelector(".resizer")) {
+        const resizer = document.createElement("div");
+        resizer.className = "resizer";
+        column.appendChild(resizer);
+      }
+    });
+  }
+
+  private initializeResize(thead: HTMLElement, table: HTMLElement) {
+    let isResizing = false;
+    let resizingColumn: any = null;
+    let startX = 0;
+    let startWidth = 0;
+
+    thead.addEventListener("mousedown", function (e) {
+      if (e.target == null) return;
+      let target = e.target as HTMLElement;
+      if (target.classList.contains("resizer")) {
+        const column = target.closest("th");
+        if (column == null) return;
+        const nextColumn = column.nextElementSibling;
+
+        if (nextColumn && !nextColumn.classList.contains("no-resize")) {
+          isResizing = true;
+          resizingColumn = column;
+          startX = e.pageX;
+          startWidth = column.offsetWidth;
+
+          table.classList.add("resizing");
+        }
+      }
+    });
+
+    document.addEventListener("mousemove", function (e) {
+      if (isResizing) {
+        const offset = e.pageX - startX;
+        const newWidth = startWidth + offset;
+
+        resizingColumn.style.width = newWidth + "px";
+      }
+    });
+
+    document.addEventListener("mouseup", function () {
+      if (isResizing) {
+        isResizing = false;
+        resizingColumn = null;
+        startX = 0;
+        startWidth = 0;
+
+        table.classList.remove("resizing");
+      }
+    });
+  }
+
   private reloadParameters() {
     let params = getOrDefault(window.log, "NT:/OxConfig/Params", LoggableType.String, Infinity, "");
     if (params == "") return;
@@ -300,18 +368,24 @@ export default class ConfigEditorController implements TabController {
         this.PARAMETER_TABLE_HEADERS.innerHTML = "";
         this.MODE_DROPDOWN.innerHTML = "";
         let paramHeader = document.createElement("th");
-        paramHeader.innerText = "Parameter";
+        let paramDiv = document.createElement("div");
+        paramDiv.innerText = "Parameter";
         paramHeader.className = "param-table-header";
+        paramHeader.appendChild(paramDiv);
         this.PARAMETER_TABLE_HEADERS.appendChild(paramHeader);
         let commentHeader = document.createElement("th");
-        commentHeader.innerText = "Comment";
+        let commentDiv = document.createElement("div");
+        commentDiv.innerText = "Comment";
         commentHeader.className = "comment-table-header";
+        commentHeader.appendChild(commentDiv);
         this.PARAMETER_TABLE_HEADERS.appendChild(commentHeader);
         for (let mode of this.modes) {
           let prettyMode = mode.charAt(0).toUpperCase();
           prettyMode += mode.slice(1);
           let header = document.createElement("th");
-          header.innerText = prettyMode;
+          let headerDiv = document.createElement("div");
+          headerDiv.innerText = prettyMode;
+          header.appendChild(headerDiv);
           this.PARAMETER_TABLE_HEADERS.appendChild(header);
 
           let choice = document.createElement("option");
