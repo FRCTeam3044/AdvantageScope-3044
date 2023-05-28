@@ -1,7 +1,7 @@
 {
   "name": "advantagescope",
   "productName": "AdvantageScope",
-  "version": "2.3.0-oxconfig",
+  "version": "2.3.1-oxconfig",
   "description": "Robot telemetry application for FRC with extra features for oxconfig (Fork of FRC Team 6328 MechanicalAdvantage's AdvantageScope)",
   "author": {
     "name": "nab138 FRC 3044",
