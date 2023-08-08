@@ -530,6 +530,8 @@ export default class TunerController implements TabController {
 
     let controllers = getOrDefault(window.log, "NT:/OxConfig/Classes", LoggableType.String, Infinity, "");
     if (controllers == "") {
+      this.CONTROLLER_DROPDOWN.innerHTML = "";
+      this.controllerList = [];
       let option = document.createElement("option");
       option.value = "failed";
       option.innerText = "Failed to retrieve list";

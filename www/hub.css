@@ -1880,6 +1880,7 @@ select {
 /* Show extra information on hover */
 .question-icon:hover + .extra-info {
   display: block;
+  z-index: 999 !important;
 }
 
 @media (prefers-color-scheme: dark) {
