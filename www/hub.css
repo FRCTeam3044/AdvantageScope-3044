@@ -1381,6 +1381,7 @@ table.timeline-viz-config button {
 }
 
 div.odometry-canvas-container,
+div.lines-canvas-container,
 div.three-dimension-canvas-container,
 canvas.joysticks-canvas {
   position: absolute;
@@ -1390,7 +1391,8 @@ canvas.joysticks-canvas {
   width: 100%;
 }
 
-div.odometry-canvas-container canvas {
+div.odometry-canvas-container canvas,
+div.lines-canvas-container canvas {
   position: absolute;
   left: 50%;
   top: 50%;
