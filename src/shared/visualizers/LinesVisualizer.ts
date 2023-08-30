@@ -124,6 +124,34 @@ export default class LinesVisualizer implements Visualizer {
       return positionPixels;
     };
 
+    // Draw blue lines with a point at each end
+    command.poses.lines.forEach((line: Pose2d[]) => {
+      context.strokeStyle = "blue";
+      context.lineWidth = command.options.lineThickness * pixelsPerUnit;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.beginPath();
+      context.moveTo(...calcCoordinates(line[0].translation));
+      context.lineTo(...calcCoordinates(line[1].translation));
+      context.stroke();
+      context.fillStyle = "blue";
+      context.beginPath();
+      context.arc(
+        ...calcCoordinates(line[0].translation),
+        command.options.pointSize * pixelsPerUnit * 0.5,
+        0,
+        2 * Math.PI
+      );
+      context.fill();
+      context.beginPath();
+      context.arc(
+        ...calcCoordinates(line[1].translation),
+        command.options.pointSize * pixelsPerUnit * 0.5,
+        0,
+        2 * Math.PI
+      );
+      context.fill();
+    });
     // Draw trajectories
     command.poses.trajectory.forEach((trajectory: Pose2d[]) => {
       context.strokeStyle = "orange";
@@ -148,34 +176,6 @@ export default class LinesVisualizer implements Visualizer {
       context.beginPath();
       context.arc(
         ...calcCoordinates(point.translation),
-        command.options.pointSize * pixelsPerUnit * 0.5,
-        0,
-        2 * Math.PI
-      );
-      context.fill();
-    });
-    // Draw blue lines with a point at each end
-    command.poses.lines.forEach((line: Pose2d[]) => {
-      context.strokeStyle = "blue";
-      context.lineWidth = command.options.lineThickness * pixelsPerUnit;
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.beginPath();
-      context.moveTo(...calcCoordinates(line[0].translation));
-      context.lineTo(...calcCoordinates(line[1].translation));
-      context.stroke();
-      context.fillStyle = "blue";
-      context.beginPath();
-      context.arc(
-        ...calcCoordinates(line[0].translation),
-        command.options.pointSize * pixelsPerUnit * 0.5,
-        0,
-        2 * Math.PI
-      );
-      context.fill();
-      context.beginPath();
-      context.arc(
-        ...calcCoordinates(line[1].translation),
         command.options.pointSize * pixelsPerUnit * 0.5,
         0,
         2 * Math.PI
