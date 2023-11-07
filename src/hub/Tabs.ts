@@ -11,6 +11,7 @@ import LineGraphController from "./tabControllers/LineGraphController";
 import MechanismController from "./tabControllers/MechanismController";
 import MetadataController from "./tabControllers/MetadataController";
 import OdometryController from "./tabControllers/OdometryController";
+import LinesController from "./tabControllers/LinesController";
 import PointsController from "./tabControllers/PointsController";
 import StatisticsController from "./tabControllers/StatisticsController";
 import SwerveController from "./tabControllers/SwerveController";
@@ -258,6 +259,11 @@ export default class Tabs {
       case TabType.ConfigEditor:
         contentElement = this.CONTENT_TEMPLATES.children[15].cloneNode(true) as HTMLElement;
         controller = new ConfigEditorController(contentElement);
+        break;
+      case TabType.Lines:
+        contentElement = this.CONTENT_TEMPLATES.children[5].cloneNode(true) as HTMLElement;
+        contentElement.appendChild(this.CONTENT_TEMPLATES.children[16].cloneNode(true));
+        controller = new LinesController(contentElement);
         break;
     }
 

@@ -13,7 +13,8 @@ enum TabType {
   Points,
   Metadata,
   Tuner,
-  ConfigEditor
+  ConfigEditor,
+  Lines
 }
 
 export default TabType;
@@ -25,7 +26,8 @@ export const TIMELINE_VIZ_TYPES: TabType[] = [
   TabType.Points,
   TabType.Joysticks,
   TabType.Swerve,
-  TabType.Mechanism
+  TabType.Mechanism,
+  TabType.Lines
 ];
 
 export function getAllTabTypes(): TabType[] {
@@ -64,6 +66,8 @@ export function getDefaultTabTitle(type: TabType): string {
       return "Tuner";
     case TabType.ConfigEditor:
       return "Config Editor";
+    case TabType.Lines:
+      return "Lines";
     default:
       return "";
   }
@@ -101,6 +105,8 @@ export function getTabIcon(type: TabType): string {
       return "🎛";
     case TabType.ConfigEditor:
       return "🛠️";
+    case TabType.Lines:
+      return "📏";
     default:
       return "";
   }
