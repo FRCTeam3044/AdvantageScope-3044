@@ -47,6 +47,7 @@ export default class ConfigEditorController implements TabController {
       window.setNt4("/OxConfig/ModeSetter", (this.MODE_DROPDOWN as HTMLSelectElement).value);
     });
   }
+  newAssets(): void {}
 
   getActiveFields(): string[] {
     return ["NT:/OxConfig/Params", "NT:/OxConfig/Modes", "NT:/OxConfig/CurrentMode", "NT:/OxConfig/Raw"];

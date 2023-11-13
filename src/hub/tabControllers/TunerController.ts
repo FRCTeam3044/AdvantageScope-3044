@@ -245,6 +245,7 @@ export default class TunerController implements TabController {
       });
     });
   }
+  newAssets(): void {}
 
   confirmCopyAll(data: any) {
     window.setNt4("/OxConfig/ClassSetter", `copyAll,${data.controller},${data.source}`);
