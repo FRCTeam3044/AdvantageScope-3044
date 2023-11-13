@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="UTF-8" />
@@ -42,6 +42,7 @@
             <select id="liveMode">
               <option value="nt4">NetworkTables 4</option>
               <option value="nt4-akit">NetworkTables 4 (AdvantageKit)</option>
+              <option value="pathplanner">PathPlanner 2023</option>
               <option value="rlog">RLOG Server</option>
             </select>
           </td>
@@ -56,19 +57,47 @@
           </td>
         </tr>
         <tr>
-          <td class="label">RLOG Server Port</td>
+          <td class="label">Discard Live Data</td>
           <td class="input" tabindex="-1">
-            <input type="number" id="rlogPort" />
+            <select id="liveDiscard">
+              <option value="60">After 1 minute</option>
+              <option value="300">After 5 minutes</option>
+              <option value="1200">After 20 minutes</option>
+              <option value="-1">Never</option>
+            </select>
           </td>
         </tr>
         <tr>
-          <td class="label">3D Mode</td>
+          <td class="label">NT Publish Prefixes</td>
           <td class="input" tabindex="-1">
-            <select id="threeDimensionMode">
-              <option value="quality">Prioritize quality</option>
-              <option value="efficiency">Prioritize efficiency</option>
-              <option value="auto">Prioritize efficiency on battery</option>
+            <input type="text" id="publishFilter" />
+          </td>
+        </tr>
+        <tr>
+          <td class="label">3D Mode (Default)</td>
+          <td class="input" tabindex="-1">
+            <select id="threeDimensionModeAc">
+              <option value="cinematic">Cinematic</option>
+              <option value="standard">Standard</option>
+              <option value="low-power">Low Power</option>
             </select>
+          </td>
+        </tr>
+        <tr>
+          <td class="label">3D Mode (Battery)</td>
+          <td class="input" tabindex="-1">
+            <select id="threeDimensionModeBattery">
+              <option value="">Default</option>
+              <option value="cinematic">Cinematic</option>
+              <option value="standard">Standard</option>
+              <option value="low-power">Low Power</option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td class="label">TBA API Key</td>
+          <td class="input" tabindex="-1">
+            <input type="text" id="tbaApiKey" />
           </td>
         </tr>
       </tbody>

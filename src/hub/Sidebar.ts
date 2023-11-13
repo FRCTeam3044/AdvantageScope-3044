@@ -1,18 +1,23 @@
 import { SidebarState } from "../shared/HubState";
 import LogFieldTree from "../shared/log/LogFieldTree";
 import LoggableType from "../shared/log/LoggableType";
-import { getFullKeyIfMechanism, getOrDefault, MECHANISM_KEY, TYPE_KEY } from "../shared/log/LogUtil";
+import { searchFields, TYPE_KEY } from "../shared/log/LogUtil";
 import { arraysEqual, setsEqual } from "../shared/util";
+import { ZEBRA_LOG_KEY } from "./dataSources/LoadZebra";
 
 export default class Sidebar {
   private SIDEBAR = document.getElementsByClassName("side-bar")[0] as HTMLElement;
   private SIDEBAR_HANDLE = document.getElementsByClassName("side-bar-handle")[0] as HTMLElement;
   private SIDEBAR_SHADOW = document.getElementsByClassName("side-bar-shadow")[0] as HTMLElement;
   private SIDEBAR_TITLE = document.getElementsByClassName("side-bar-title")[0] as HTMLElement;
+  private SEARCH_INPUT = document.getElementsByClassName("side-bar-search")[0] as HTMLInputElement;
   private FIELD_LIST = document.getElementById("fieldList") as HTMLElement;
   private ICON_TEMPLATES = document.getElementById("fieldItemIconTemplates") as HTMLElement;
   private DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
 
+  private SEARCH_RESULTS = document.getElementsByClassName("search-results")[0] as HTMLElement;
+
+  private MERGED_KEY = "MergedLog";
   private KNOWN_KEYS = [
     "DriverStation",
     "NetworkTables",
@@ -29,21 +34,24 @@ export default class Sidebar {
     "messages",
     "systemTime",
     "DSLog",
-    "DSEvents"
+    "DSEvents",
+    ZEBRA_LOG_KEY
   ];
-  private HIDDEN_KEYS = ["RealMetadata", "ReplayMetadata"];
+  private HIDDEN_KEYS = [".schema", "RealMetadata", "ReplayMetadata"];
   private INDENT_SIZE_PX = 20;
   private FIELD_DRAG_THRESHOLD_PX = 3;
 
   private sidebarHandleActive = false;
   private sidebarWidth = 300;
+  private fieldCount = 0;
   private lastFieldKeys: string[] = [];
-  private lastMechanismFieldKeys: string[] = [];
   private expandedFields = new Set<string>();
   private activeFields = new Set<string>();
   private activeFieldCallbacks: (() => void)[] = [];
   private selectGroup: string[] = [];
   private selectGroupClearCallbacks: (() => void)[] = [];
+  private searchKey: string | null = null;
+  private searchExpandCallbacks: (() => void)[] = [];
 
   constructor() {
     // Set up handle for resizing
@@ -69,8 +77,41 @@ export default class Sidebar {
 
     // Set up shadow when scrolling
     this.SIDEBAR.addEventListener("scroll", () => {
-      this.SIDEBAR_SHADOW.style.opacity = this.SIDEBAR.scrollTop == 0 ? "0" : "1";
+      this.SIDEBAR_SHADOW.style.opacity = this.SIDEBAR.scrollTop === 0 ? "0" : "1";
     });
+
+    // Search controls
+    let searchInputFocused = false;
+    this.SEARCH_INPUT.addEventListener("focus", () => (searchInputFocused = true));
+    this.SEARCH_INPUT.addEventListener("blur", () => (searchInputFocused = false));
+    this.SEARCH_INPUT.addEventListener("input", () => {
+      this.updateSearchResults();
+    });
+    this.SIDEBAR.addEventListener("scroll", () => {
+      if (this.SIDEBAR.scrollTop > 50 && searchInputFocused) {
+        this.SEARCH_INPUT.blur();
+      }
+    });
+    let searchPeriodic = () => {
+      let inputRect = this.SEARCH_INPUT.getBoundingClientRect();
+      this.SEARCH_RESULTS.style.top = inputRect.bottom.toString() + "px";
+      this.SEARCH_RESULTS.style.minWidth = inputRect.width.toString() + "px";
+      let hidden =
+        !searchInputFocused || this.SEARCH_INPUT.value.length === 0 || this.SEARCH_RESULTS.childElementCount === 0;
+      let unhiding = !hidden && this.SEARCH_RESULTS.hidden;
+      this.SEARCH_RESULTS.hidden = hidden;
+      if (unhiding) {
+        this.SEARCH_RESULTS.scrollTop = 0;
+      }
+    };
+
+    // Periodic function
+    let periodic = () => {
+      searchPeriodic();
+      this.updateTitle();
+      window.requestAnimationFrame(periodic);
+    };
+    window.requestAnimationFrame(periodic);
   }
 
   /** Returns the current state. */
@@ -83,7 +124,7 @@ export default class Sidebar {
 
   /** Restores to the provided state. */
   restoreState(state: SidebarState) {
-    let widthEqual = state.width == this.sidebarWidth;
+    let widthEqual = state.width === this.sidebarWidth;
     let expandedSet = new Set<string>(state.expanded);
     let expandedEqual = setsEqual(expandedSet, this.expandedFields);
     this.sidebarWidth = state.width;
@@ -92,51 +133,58 @@ export default class Sidebar {
     if (!expandedEqual) this.refresh(true);
   }
 
+  /** Updates the set of results based on the current query. */
+  private updateSearchResults() {
+    let query = this.SEARCH_INPUT.value;
+    let results = query.length === 0 ? [] : searchFields(window.log, query);
+    results = results.filter((field) => {
+      let show = true;
+      this.HIDDEN_KEYS.forEach((hiddenKey) => {
+        if (field.startsWith("/" + hiddenKey)) show = false;
+        if (field.startsWith("NT:/" + hiddenKey)) show = false;
+        if (field.startsWith("NT:/AdvantageKit/" + hiddenKey)) show = false;
+      });
+      return show;
+    });
+    while (this.SEARCH_RESULTS.firstChild) {
+      this.SEARCH_RESULTS.removeChild(this.SEARCH_RESULTS.firstChild);
+    }
+    results.forEach((field, index) => {
+      let div = document.createElement("div");
+      this.SEARCH_RESULTS.appendChild(div);
+      div.classList.add("search-results-item");
+      div.innerText = field;
+      let search = () => {
+        this.searchKey = field;
+        this.searchExpandCallbacks.forEach((callback) => callback());
+        this.searchKey = null;
+      };
+      div.addEventListener("mousedown", search);
+      div.addEventListener("touchdown", search);
+      if (index === 0) {
+        this.SEARCH_INPUT.addEventListener("keydown", (event) => {
+          if (div.getBoundingClientRect().height > 0 && event.code === "Enter") {
+            search();
+          }
+        });
+      }
+    });
+  }
+
   /** Updates the displayed width based on the current state. */
   private updateWidth() {
     document.documentElement.style.setProperty("--side-bar-width", this.sidebarWidth.toString() + "px");
     document.documentElement.style.setProperty("--show-side-bar", this.sidebarWidth > 0 ? "1" : "0");
   }
 
-  /** Refresh based on new log data or expanded field list. */
-  refresh(forceRefresh: boolean = false) {
-    let mechanismFieldKeys = window.log
-      .getFieldKeys()
-      .filter((key) => key.endsWith(TYPE_KEY))
-      .filter((key) => getOrDefault(window.log, key, LoggableType.String, Infinity, "") === MECHANISM_KEY);
-    let fieldsChanged =
-      forceRefresh ||
-      !arraysEqual(window.log.getFieldKeys(), this.lastFieldKeys) ||
-      !arraysEqual(mechanismFieldKeys, this.lastMechanismFieldKeys);
-    this.lastFieldKeys = window.log.getFieldKeys();
-    this.lastMechanismFieldKeys = mechanismFieldKeys;
-
-    if (fieldsChanged) {
-      // Remove old list
-      while (this.FIELD_LIST.firstChild) {
-        this.FIELD_LIST.removeChild(this.FIELD_LIST.firstChild);
-      }
-
-      // Add new list
-      this.selectGroupClearCallbacks = [];
-      let tree = window.log.getFieldTree();
-      let rootKeys = Object.keys(tree);
-      if (rootKeys.length == 1 && tree[rootKeys[0]].fullKey === null) {
-        // If only one table, use it as the root
-        tree = tree[rootKeys[0]].children;
-      }
-      Object.keys(tree)
-        .filter((key) => !this.HIDDEN_KEYS.includes(key))
-        .sort((a, b) => this.sortKeys(a, b, true))
-        .forEach((key) => {
-          this.addFields(key, "/" + key, tree[key], this.FIELD_LIST, 0);
-        });
-    }
-
-    // Update title
+  /** Updates the title with the duration and field count. */
+  private updateTitle() {
     let range = window.log.getTimestampRange();
-    let fieldCount = window.log.getFieldCount();
-    if (fieldCount == 0) {
+    let liveTime = window.selection.getCurrentLiveTime();
+    if (liveTime !== null) {
+      range[1] = liveTime;
+    }
+    if (this.fieldCount === 0) {
       this.SIDEBAR_TITLE.innerText = "No data available";
     } else {
       let runtime = range[1] - range[0];
@@ -150,35 +198,87 @@ export default class Sidebar {
         runtimeUnit = "h";
       }
       this.SIDEBAR_TITLE.innerText =
-        fieldCount.toString() +
+        this.fieldCount.toString() +
         " field" +
-        (fieldCount == 1 ? "" : "s") +
+        (this.fieldCount === 1 ? "" : "s") +
         ", " +
-        Math.round(runtime).toString() +
+        Math.floor(runtime).toString() +
         runtimeUnit +
         " runtime";
     }
   }
 
+  /** Refresh based on new log data or expanded field list. */
+  refresh(forceRefresh: boolean = false) {
+    let fieldsChanged = forceRefresh || !arraysEqual(window.log.getFieldKeys(), this.lastFieldKeys);
+    this.lastFieldKeys = window.log.getFieldKeys();
+
+    if (fieldsChanged) {
+      // Update field count
+      this.fieldCount = window.log.getFieldCount();
+
+      // Remove old list
+      while (this.FIELD_LIST.firstChild) {
+        this.FIELD_LIST.removeChild(this.FIELD_LIST.firstChild);
+      }
+
+      // Add new list
+      this.selectGroupClearCallbacks = [];
+      let tree = window.log.getFieldTree();
+      let rootKeys = Object.keys(tree);
+      if (rootKeys.length === 1 && tree[rootKeys[0]].fullKey === null) {
+        // If only one table, use it as the root
+        tree = tree[rootKeys[0]].children;
+      }
+      Object.keys(tree)
+        .filter((key) => !this.HIDDEN_KEYS.includes(key))
+        .sort((a, b) => this.sortKeys(a, b, true))
+        .forEach((key) => {
+          this.addFields(key, "/" + key, tree[key], this.FIELD_LIST, 0);
+        });
+
+      // Update search
+      this.updateSearchResults();
+    }
+  }
+
   /** Recursively adds a set of fields. */
-  private addFields(title: string, fullTitle: string, field: LogFieldTree, parentElement: HTMLElement, indent: number) {
+  private addFields(
+    title: string,
+    fullTitle: string,
+    field: LogFieldTree,
+    parentElement: HTMLElement,
+    indent: number,
+    generated = false
+  ) {
     let hasChildren = Object.keys(field.children).length > 0;
+    let childrenGenerated = generated || (field.fullKey !== null && window.log.isGeneratedParent(field.fullKey));
 
     // Create element
+    let fieldElementContainer = document.createElement("div");
+    parentElement.appendChild(fieldElementContainer);
+    fieldElementContainer.classList.add("field-item-container");
     let fieldElement = document.createElement("div");
-    parentElement.appendChild(fieldElement);
+    fieldElementContainer.appendChild(fieldElement);
     fieldElement.classList.add("field-item");
+    if (generated) {
+      fieldElement.classList.add("generated");
+    }
 
     // Active fields callback
     this.activeFieldCallbacks.push(() => {
       let visible = fieldElement.getBoundingClientRect().height > 0;
 
-      // Add full key if available and array
+      // Add full key if available and array, raw, or string
+      // - raw in case of msgpack, struct, or ptoto
+      // - string in case of JSON
       if (
         field.fullKey !== null &&
         (window.log.getType(field.fullKey) === LoggableType.BooleanArray ||
           window.log.getType(field.fullKey) === LoggableType.NumberArray ||
-          window.log.getType(field.fullKey) === LoggableType.StringArray)
+          window.log.getType(field.fullKey) === LoggableType.StringArray ||
+          window.log.getType(field.fullKey) === LoggableType.Raw ||
+          window.log.getType(field.fullKey) === LoggableType.String)
       ) {
         if (visible) {
           this.activeFields.add(field.fullKey);
@@ -207,35 +307,49 @@ export default class Sidebar {
     openIcon.style.display = "none";
     neutralIcon.style.display = hasChildren ? "none" : "initial";
 
-    // Check if mechanism
-    let mechanismFullKey = getFullKeyIfMechanism(field);
-    if (mechanismFullKey !== null) {
-      field.fullKey = mechanismFullKey; // Acts like a normal field
-    }
-
     // Create label
     let label = document.createElement("div");
     fieldElement.appendChild(label);
     label.classList.add("field-item-label");
     if (
-      (indent == 0 || (indent == this.INDENT_SIZE_PX && fullTitle.startsWith("/AdvantageKit"))) &&
-      this.KNOWN_KEYS.includes(title)
+      (indent === 0 ||
+        (indent === this.INDENT_SIZE_PX &&
+          (fullTitle.startsWith("/AdvantageKit") || fullTitle.startsWith("/" + this.MERGED_KEY)))) &&
+      (this.KNOWN_KEYS.includes(title) || title.startsWith(this.MERGED_KEY))
     ) {
       label.classList.add("known");
     }
-    label.innerText = title;
+    {
+      let labelSpan = document.createElement("span");
+      label.appendChild(labelSpan);
+      labelSpan.innerText = title;
+    }
     label.style.fontStyle = field.fullKey === null ? "normal" : "italic";
     label.style.cursor = field.fullKey === null ? "auto" : "grab";
+    if (field.fullKey) {
+      let structuredType = window.log.getStructuredType(field.fullKey);
+      if (structuredType !== null) {
+        let typeLabel = document.createElement("span");
+        typeLabel.classList.add("field-item-type-label");
+        label.appendChild(typeLabel);
+        typeLabel.innerHTML = " &ndash; " + structuredType;
+      }
+    }
 
-    // Dragging support
+    // Full key fields
     if (field.fullKey !== null) {
+      // Dragging support
       let dragEvent = (x: number, y: number, offsetX: number, offsetY: number) => {
         let isGroup = this.selectGroup.includes(field.fullKey !== null ? field.fullKey : "");
         this.DRAG_ITEM.innerText = title + (isGroup ? "..." : "");
         this.DRAG_ITEM.style.fontWeight = isGroup ? "bolder" : "initial";
         window.startDrag(x, y, offsetX, offsetY, {
           fields: isGroup ? this.selectGroup : [field.fullKey],
-          children: isGroup ? [] : Object.values(field.children).map((x) => x.fullKey)
+          children: isGroup
+            ? []
+            : Object.values(field.children)
+                .map((x) => x.fullKey)
+                .filter((x) => x !== null && !x.endsWith("/length"))
         });
         if (isGroup) {
           this.selectGroup = [];
@@ -248,7 +362,7 @@ export default class Sidebar {
         mouseDownInfo = [event.clientX, event.clientY, event.offsetX, event.offsetY];
       });
       window.addEventListener("mousemove", (event) => {
-        if (mouseDownInfo != null) {
+        if (mouseDownInfo !== null) {
           if (
             Math.abs(event.clientX - mouseDownInfo[0]) >= this.FIELD_DRAG_THRESHOLD_PX ||
             Math.abs(event.clientY - mouseDownInfo[1]) >= this.FIELD_DRAG_THRESHOLD_PX
@@ -259,14 +373,14 @@ export default class Sidebar {
         }
       });
       label.addEventListener("mouseup", (event) => {
-        if (mouseDownInfo != null) {
+        if (mouseDownInfo !== null) {
           if (
             (event.ctrlKey || event.metaKey) &&
             Math.abs(event.clientX - mouseDownInfo[0]) < this.FIELD_DRAG_THRESHOLD_PX &&
             Math.abs(event.clientY - mouseDownInfo[1]) < this.FIELD_DRAG_THRESHOLD_PX
           ) {
             let index = this.selectGroup.indexOf(field.fullKey !== null ? field.fullKey : "");
-            if (index == -1) {
+            if (index === -1) {
               this.selectGroup.push(field.fullKey !== null ? field.fullKey : "");
               label.style.fontWeight = "bolder";
             } else {
@@ -291,6 +405,18 @@ export default class Sidebar {
       this.selectGroupClearCallbacks.push(() => {
         label.style.fontWeight = "initial";
       });
+
+      // Search expand callback
+      let highlightForSearch = () => {
+        if (this.searchKey !== null && field.fullKey === this.searchKey) {
+          // @ts-expect-error
+          fieldElement.scrollIntoViewIfNeeded(); // Available in Chromium but not standard
+          fieldElementContainer.classList.add("highlight");
+          setTimeout(() => fieldElementContainer.classList.remove("highlight"), 3000);
+        }
+      };
+      this.searchExpandCallbacks.push(highlightForSearch);
+      highlightForSearch(); // Try immediately in case this field was generating while expanding for search
     }
 
     // Add children
@@ -301,7 +427,10 @@ export default class Sidebar {
       childSpan.hidden = true;
 
       let firstExpand = true;
+      let currentlyExpanded = false;
       let setExpanded = (expanded: boolean) => {
+        currentlyExpanded = expanded;
+
         // Update icon and span display
         childSpan.hidden = !expanded;
         closedIcon.style.display = expanded ? "none" : "initial";
@@ -316,7 +445,7 @@ export default class Sidebar {
         if (firstExpand) {
           firstExpand = false;
           let childKeys = Object.keys(field.children);
-          if (fullTitle == "/AdvantageKit") {
+          if (fullTitle === "/AdvantageKit" || fullTitle === "/NT" || fullTitle.startsWith("/" + this.MERGED_KEY)) {
             // Apply hidden and known keys
             childKeys = childKeys
               .filter((key) => !this.HIDDEN_KEYS.includes(key))
@@ -325,11 +454,38 @@ export default class Sidebar {
             childKeys = childKeys.sort((a, b) => this.sortKeys(a, b));
           }
           childKeys.forEach((key) => {
-            this.addFields(key, fullTitle + "/" + key, field.children[key], childSpan, indent + this.INDENT_SIZE_PX);
+            this.addFields(
+              key,
+              fullTitle + "/" + key,
+              field.children[key],
+              childSpan,
+              indent + this.INDENT_SIZE_PX,
+              childrenGenerated
+            );
           });
         }
       };
 
+      // Search expand callback
+      let expandForSearch = () => {
+        if (this.searchKey === null) return;
+        let foundSearchKey = false;
+        let searchTree = (tree: LogFieldTree) => {
+          if (tree.fullKey === this.searchKey) {
+            foundSearchKey = true;
+          } else {
+            Object.values(tree.children).forEach((tree) => searchTree(tree));
+          }
+        };
+        Object.values(field.children).forEach((tree) => searchTree(tree));
+        if (foundSearchKey && !currentlyExpanded) {
+          setExpanded(true);
+        }
+      };
+      this.searchExpandCallbacks.push(expandForSearch);
+      expandForSearch(); // Try immediately in case this field was generating while expanding for search
+
+      // User controls
       closedIcon.addEventListener("click", () => setExpanded(true));
       openIcon.addEventListener("click", () => setExpanded(false));
       if (this.expandedFields.has(fullTitle)) setExpanded(true);
@@ -340,10 +496,14 @@ export default class Sidebar {
   private sortKeys(a: string, b: string, useKnown: boolean = false): number {
     // Check for known keys
     if (useKnown) {
-      if (this.KNOWN_KEYS.includes(a) && !this.KNOWN_KEYS.includes(b)) return 1;
-      if (!this.KNOWN_KEYS.includes(a) && this.KNOWN_KEYS.includes(b)) return -1;
-    }
+      let isMerged = (key: string) => key.startsWith(this.MERGED_KEY);
+      if (isMerged(a) && !isMerged(b)) return 1;
+      if (!isMerged(a) && isMerged(b)) return -1;
 
+      let isKnown = (key: string) => this.KNOWN_KEYS.includes(key);
+      if (isKnown(a) && !isKnown(b)) return 1;
+      if (!isKnown(a) && isKnown(b)) return -1;
+    }
     return a.localeCompare(b, undefined, { numeric: true });
   }
 

@@ -1,6 +1,6 @@
 import Log from "../../shared/log/Log";
 import LoggableType from "../../shared/log/LoggableType";
-import Schemas from "./schema/Schemas";
+import CustomSchemas from "./schema/CustomSchemas";
 import { WPILOGDecoder } from "./wpilog/WPILOGDecoder";
 
 self.onmessage = (event) => {
@@ -9,6 +9,9 @@ self.onmessage = (event) => {
   function resolve(result: any) {
     self.postMessage({ id: id, payload: result });
   }
+  function progress(percent: number) {
+    self.postMessage({ id: id, progress: percent });
+  }
   function reject() {
     self.postMessage({ id: id });
   }
@@ -16,12 +19,14 @@ self.onmessage = (event) => {
   // MAIN LOGIC
 
   // Run worker
-  let log = new Log();
+  let log = new Log(false); // No timestamp set cache for efficiency
   let reader = new WPILOGDecoder(payload[0]);
+  let totalBytes = (payload[0] as Uint8Array).byteLength;
   let entryIds: { [id: number]: string } = {};
   let entryTypes: { [id: number]: string } = {};
+  let lastProgressTimestamp = new Date().getTime();
   try {
-    reader.forEach((record) => {
+    reader.forEach((record, byteCount) => {
       if (record.isControl()) {
         if (record.isStart()) {
           let startData = record.getStartData();
@@ -31,6 +36,7 @@ self.onmessage = (event) => {
             case "boolean":
               log.createBlankField(startData.name, LoggableType.Boolean);
               break;
+            case "int":
             case "int64":
             case "float":
             case "double":
@@ -43,6 +49,7 @@ self.onmessage = (event) => {
             case "boolean[]":
               log.createBlankField(startData.name, LoggableType.BooleanArray);
               break;
+            case "int[]":
             case "int64[]":
             case "float[]":
             case "double[]":
@@ -55,51 +62,80 @@ self.onmessage = (event) => {
               log.createBlankField(startData.name, LoggableType.Raw);
               break;
           }
+          log.setWpilibType(startData.name, startData.type);
         }
       } else {
         let key = entryIds[record.getEntry()];
         let type = entryTypes[record.getEntry()];
         let timestamp = record.getTimestamp() / 1000000.0;
-        switch (type) {
-          case "boolean":
-            log.putBoolean(key, timestamp, record.getBoolean());
-            break;
-          case "int":
-          case "int64":
-            log.putNumber(key, timestamp, record.getInteger());
-            break;
-          case "float":
-            log.putNumber(key, timestamp, record.getFloat());
-            break;
-          case "double":
-            log.putNumber(key, timestamp, record.getDouble());
-            break;
-          case "string":
-          case "json":
-            log.putString(key, timestamp, record.getString());
-            break;
-          case "boolean[]":
-            log.putBooleanArray(key, timestamp, record.getBooleanArray());
-            break;
-          case "int64[]":
-            log.putNumberArray(key, timestamp, record.getIntegerArray());
-            break;
-          case "float[]":
-            log.putNumberArray(key, timestamp, record.getFloatArray());
-            break;
-          case "double[]":
-            log.putNumberArray(key, timestamp, record.getDoubleArray());
-            break;
-          case "string[]":
-            log.putStringArray(key, timestamp, record.getStringArray());
-            break;
-          default: // Default to raw
-            log.putRaw(key, timestamp, record.getRaw());
-            if (Schemas.has(type)) {
-              Schemas.get(type)!(log, key, timestamp, record.getRaw());
-            }
-            break;
+        if (key && type) {
+          switch (type) {
+            case "boolean":
+              log.putBoolean(key, timestamp, record.getBoolean());
+              break;
+            case "int":
+            case "int64":
+              log.putNumber(key, timestamp, record.getInteger());
+              break;
+            case "float":
+              log.putNumber(key, timestamp, record.getFloat());
+              break;
+            case "double":
+              log.putNumber(key, timestamp, record.getDouble());
+              break;
+            case "string":
+              log.putString(key, timestamp, record.getString());
+              break;
+            case "boolean[]":
+              log.putBooleanArray(key, timestamp, record.getBooleanArray());
+              break;
+            case "int[]":
+            case "int64[]":
+              log.putNumberArray(key, timestamp, record.getIntegerArray());
+              break;
+            case "float[]":
+              log.putNumberArray(key, timestamp, record.getFloatArray());
+              break;
+            case "double[]":
+              log.putNumberArray(key, timestamp, record.getDoubleArray());
+              break;
+            case "string[]":
+              log.putStringArray(key, timestamp, record.getStringArray());
+              break;
+            case "json":
+              log.putJSON(key, timestamp, record.getString());
+              break;
+            case "msgpack":
+              log.putMsgpack(key, timestamp, record.getRaw());
+              break;
+            default: // Default to raw
+              if (type.startsWith("struct:")) {
+                let schemaType = type.split("struct:")[1];
+                if (schemaType.endsWith("[]")) {
+                  log.putStruct(key, timestamp, record.getRaw(), schemaType.slice(0, -2), true);
+                } else {
+                  log.putStruct(key, timestamp, record.getRaw(), schemaType, false);
+                }
+              } else if (type.startsWith("proto:")) {
+                let schemaType = type.split("proto:")[1];
+                log.putProto(key, timestamp, record.getRaw(), schemaType);
+              } else {
+                log.putRaw(key, timestamp, record.getRaw());
+                if (CustomSchemas.has(type)) {
+                  CustomSchemas.get(type)!(log, key, timestamp, record.getRaw());
+                  log.setGeneratedParent(key);
+                }
+              }
+              break;
+          }
         }
+      }
+
+      // Send progress update
+      let now = new Date().getTime();
+      if (now - lastProgressTimestamp > 1000 / 60) {
+        lastProgressTimestamp = now;
+        progress(byteCount / totalBytes);
       }
     });
   } catch (exception) {
@@ -107,5 +143,9 @@ self.onmessage = (event) => {
     reject();
     return;
   }
-  resolve(log.toSerialized());
+  progress(1);
+  setTimeout(() => {
+    // Allow progress message to get through first
+    resolve(log.toSerialized());
+  }, 0);
 };

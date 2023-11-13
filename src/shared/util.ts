@@ -1,7 +1,7 @@
 /** Checks whether two arrays are equal. */
 export function arraysEqual(a: any[], b: any[]): boolean {
   return (
-    a.length == b.length &&
+    a.length === b.length &&
     a.every((value, index) => {
       return value === b[index];
     })
@@ -11,7 +11,7 @@ export function arraysEqual(a: any[], b: any[]): boolean {
 /** Checks whether two sets are equal. */
 export function setsEqual(a: Set<any>, b: Set<any>): boolean {
   return (
-    a.size == b.size &&
+    a.size === b.size &&
     Array.from(a).every((value) => {
       return b.has(value);
     })
@@ -21,10 +21,7 @@ export function setsEqual(a: Set<any>, b: Set<any>): boolean {
 /** Checks whether all values in an array match the given type. */
 export function checkArrayType(value: unknown, type: string): boolean {
   if (!Array.isArray(value)) return false;
-  value.forEach((item) => {
-    if (typeof item !== type) return false;
-  });
-  return true;
+  return value.every((item) => typeof item === type);
 }
 
 /** Creates a deep copy of an object by converting to and from JSON. */
@@ -43,7 +40,7 @@ export function htmlEncode(text: string): string {
 export function shiftColor(color: string, shift: number): string {
   let colorHexArray = color.slice(1).match(/.{1,2}/g);
   let colorArray = [0, 0, 0];
-  if (colorHexArray != null)
+  if (colorHexArray !== null)
     colorArray = [parseInt(colorHexArray[0], 16), parseInt(colorHexArray[1], 16), parseInt(colorHexArray[2], 16)];
   let shiftedColorArray = colorArray.map((x) => {
     x += shift;
@@ -65,7 +62,7 @@ export function zfill(number: string, length: number): string {
 /** Cleans up floating point errors. */
 export function cleanFloat(float: number) {
   let output = Math.round(float * 1e6) / 1e6;
-  if (output == -0) output = 0;
+  if (output === -0) output = 0;
   return output;
 }
 
@@ -105,13 +102,12 @@ export function transformPx(
 
 /** Wraps a radian value to a range of negative pi to pi. */
 export function wrapRadians(radians: number): number {
-  while (radians < -Math.PI) {
-    radians += Math.PI * 2;
+  let wrapped = (radians + Math.PI) % (2 * Math.PI);
+  if (wrapped > 0) {
+    return wrapped - Math.PI;
+  } else {
+    return wrapped + Math.PI;
   }
-  while (radians > Math.PI) {
-    radians -= Math.PI * 2;
-  }
-  return radians;
 }
 
 /** Generates a random string of characters. */

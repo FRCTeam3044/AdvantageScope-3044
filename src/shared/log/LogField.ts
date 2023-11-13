@@ -1,5 +1,5 @@
-import { arraysEqual } from "../util";
 import LoggableType from "./LoggableType";
+import { logValuesEqual } from "./LogUtil";
 import {
   LogValueSetAny,
   LogValueSetBoolean,
@@ -15,6 +15,11 @@ import {
 export default class LogField {
   private type: LoggableType;
   private data: LogValueSetAny = { timestamps: [], values: [] };
+  public structuredType: string | null = null;
+  public wpilibType: string | null = null; // Original type from WPILOG & NT4
+
+  // Toggles when first value is removed, useful for creating striping effects that persist as data is updated
+  private stripingReference = false;
 
   constructor(type: LoggableType) {
     this.type = type;
@@ -25,9 +30,26 @@ export default class LogField {
     return this.type;
   }
 
+  /** Returns the value of the striping reference. */
+  getStripingReference(): boolean {
+    return this.stripingReference;
+  }
+
   /** Returns the full set of ordered timestamps. */
   getTimestamps(): number[] {
     return this.data.timestamps;
+  }
+
+  /** Clears all data before the provided timestamp. */
+  clearBeforeTime(timestamp: number) {
+    while (this.data.timestamps.length >= 2 && this.data.timestamps[1] < timestamp) {
+      this.data.timestamps.shift();
+      this.data.values.shift();
+      this.stripingReference = !this.stripingReference;
+    }
+    if (this.data.timestamps.length > 0 && this.data.timestamps[0] < timestamp) {
+      this.data.timestamps[0] = timestamp;
+    }
   }
 
   /** Returns the values in the specified timestamp range. */
@@ -36,14 +58,14 @@ export default class LogField {
     let values: any[];
 
     let startValueIndex = this.data.timestamps.findIndex((x) => x > start);
-    if (startValueIndex == -1) {
+    if (startValueIndex === -1) {
       startValueIndex = this.data.timestamps.length - 1;
-    } else if (startValueIndex != 0) {
+    } else if (startValueIndex !== 0) {
       startValueIndex -= 1;
     }
 
     let endValueIndex = this.data.timestamps.findIndex((x) => x >= end);
-    if (endValueIndex == -1 || endValueIndex == this.data.timestamps.length - 1) {
+    if (endValueIndex === -1 || endValueIndex === this.data.timestamps.length - 1) {
       // Extend to end of timestamps
       timestamps = this.data.timestamps.slice(startValueIndex);
       values = this.data.values.slice(startValueIndex);
@@ -56,64 +78,42 @@ export default class LogField {
 
   /** Reads a set of Raw values from the field. */
   getRaw(start: number, end: number): LogValueSetRaw | undefined {
-    if (this.type == LoggableType.Raw) return this.getRange(start, end);
+    if (this.type === LoggableType.Raw) return this.getRange(start, end);
   }
 
   /** Reads a set of Boolean values from the field. */
   getBoolean(start: number, end: number): LogValueSetBoolean | undefined {
-    if (this.type == LoggableType.Boolean) return this.getRange(start, end);
+    if (this.type === LoggableType.Boolean) return this.getRange(start, end);
   }
 
   /** Reads a set of Number values from the field. */
   getNumber(start: number, end: number): LogValueSetNumber | undefined {
-    if (this.type == LoggableType.Number) return this.getRange(start, end);
+    if (this.type === LoggableType.Number) return this.getRange(start, end);
   }
 
   /** Reads a set of String values from the field. */
   getString(start: number, end: number): LogValueSetString | undefined {
-    if (this.type == LoggableType.String) return this.getRange(start, end);
+    if (this.type === LoggableType.String) return this.getRange(start, end);
   }
 
   /** Reads a set of BooleanArray values from the field. */
   getBooleanArray(start: number, end: number): LogValueSetBooleanArray | undefined {
-    if (this.type == LoggableType.BooleanArray) return this.getRange(start, end);
+    if (this.type === LoggableType.BooleanArray) return this.getRange(start, end);
   }
 
   /** Reads a set of NumberArray values from the field. */
   getNumberArray(start: number, end: number): LogValueSetNumberArray | undefined {
-    if (this.type == LoggableType.NumberArray) return this.getRange(start, end);
+    if (this.type === LoggableType.NumberArray) return this.getRange(start, end);
   }
 
   /** Reads a set of StringArray values from the field. */
   getStringArray(start: number, end: number): LogValueSetStringArray | undefined {
-    if (this.type == LoggableType.StringArray) return this.getRange(start, end);
-  }
-
-  /** Checks if two log values are equal. */
-  private areEqual(type: LoggableType, a: any, b: any): boolean {
-    switch (type) {
-      case LoggableType.Boolean:
-      case LoggableType.Number:
-      case LoggableType.String:
-        return a == b;
-      case LoggableType.BooleanArray:
-      case LoggableType.NumberArray:
-      case LoggableType.StringArray:
-        return arraysEqual(a, b);
-      case LoggableType.Raw:
-        return arraysEqual(Array.from(a as Uint8Array), Array.from(b as Uint8Array));
-    }
+    if (this.type === LoggableType.StringArray) return this.getRange(start, end);
   }
 
   /** Inserts a new value at the correct index. */
   private putData(timestamp: number, value: any) {
     if (value === null) return;
-
-    // Check if the timestamp already exists
-    if (this.data.timestamps.includes(timestamp)) {
-      this.data.values[this.data.timestamps.indexOf(timestamp)] = value;
-      return;
-    }
 
     // Find position to insert based on timestamp
     let insertIndex: number;
@@ -122,17 +122,25 @@ export default class LogField {
       insertIndex = this.data.timestamps.length;
     } else {
       // Adding in the middle, find where to insert it
-      insertIndex = this.data.timestamps.findIndex((x) => x > timestamp);
-      if (insertIndex == -1) {
-        insertIndex = this.data.timestamps.length;
+      let alreadyExists = false;
+      insertIndex =
+        this.data.timestamps.findLastIndex((x) => {
+          if (alreadyExists) return;
+          if (x === timestamp) alreadyExists = true;
+          return x < timestamp;
+        }) + 1;
+      if (alreadyExists) {
+        this.data.values[this.data.timestamps.indexOf(timestamp)] = value;
+        return;
       }
     }
 
-    if (insertIndex > 0 && this.areEqual(this.type, value, this.data.values[insertIndex - 1])) {
+    // Compare to adjacent values
+    if (insertIndex > 0 && logValuesEqual(this.type, value, this.data.values[insertIndex - 1])) {
       // Same as the previous value
     } else if (
       insertIndex < this.data.values.length &&
-      this.areEqual(this.type, value, this.data.values[insertIndex])
+      logValuesEqual(this.type, value, this.data.values[insertIndex])
     ) {
       // Same as the next value
       this.data.timestamps[insertIndex] = timestamp;
@@ -145,37 +153,37 @@ export default class LogField {
 
   /** Writes a new Raw value to the field. */
   putRaw(timestamp: number, value: Uint8Array) {
-    if (this.type == LoggableType.Raw) this.putData(timestamp, value);
+    if (this.type === LoggableType.Raw) this.putData(timestamp, value);
   }
 
   /** Writes a new Boolean value to the field. */
   putBoolean(timestamp: number, value: boolean) {
-    if (this.type == LoggableType.Boolean) this.putData(timestamp, value);
+    if (this.type === LoggableType.Boolean) this.putData(timestamp, value);
   }
 
   /** Writes a new Number value to the field. */
   putNumber(timestamp: number, value: number) {
-    if (this.type == LoggableType.Number) this.putData(timestamp, value);
+    if (this.type === LoggableType.Number) this.putData(timestamp, value);
   }
 
   /** Writes a new String value to the field. */
   putString(timestamp: number, value: string) {
-    if (this.type == LoggableType.String) this.putData(timestamp, value);
+    if (this.type === LoggableType.String) this.putData(timestamp, value);
   }
 
   /** Writes a new BooleanArray value to the field. */
   putBooleanArray(timestamp: number, value: boolean[]) {
-    if (this.type == LoggableType.BooleanArray) this.putData(timestamp, value);
+    if (this.type === LoggableType.BooleanArray) this.putData(timestamp, value);
   }
 
   /** Writes a new NumberArray value to the field. */
   putNumberArray(timestamp: number, value: number[]) {
-    if (this.type == LoggableType.NumberArray) this.putData(timestamp, value);
+    if (this.type === LoggableType.NumberArray) this.putData(timestamp, value);
   }
 
   /** Writes a new StringArray value to the field. */
   putStringArray(timestamp: number, value: string[]) {
-    if (this.type == LoggableType.StringArray) this.putData(timestamp, value);
+    if (this.type === LoggableType.StringArray) this.putData(timestamp, value);
   }
 
   /** Returns a serialized version of the data from this field. */
@@ -183,7 +191,10 @@ export default class LogField {
     return {
       type: this.type,
       timestamps: this.data.timestamps,
-      values: this.data.values
+      values: this.data.values,
+      structuredType: this.structuredType,
+      wpilibType: this.wpilibType,
+      stripingReference: this.stripingReference
     };
   }
 
@@ -194,6 +205,9 @@ export default class LogField {
       timestamps: serializedData.timestamps,
       values: serializedData.values
     };
+    field.structuredType = serializedData.structuredType;
+    field.wpilibType = serializedData.wpilibType;
+    field.stripingReference = serializedData.stripingReference;
     return field;
   }
 }

@@ -1,3 +1,5 @@
+import hljs from "highlight.js/lib/core";
+import java from "highlight.js/lib/languages/java";
 import { Remarkable } from "remarkable";
 import { TabState } from "../../shared/HubState";
 import TabType from "../../shared/TabType";
@@ -9,10 +11,13 @@ export default class DocumentationController implements TabController {
   private remarkable = new Remarkable({ html: true });
   private isIndex = false;
 
+  static {
+    hljs.registerLanguage("java", java);
+  }
+
   constructor(content: HTMLElement) {
     this.CONTAINER = content.getElementsByClassName("documentation-container")[0] as HTMLElement;
     this.TEXT = content.getElementsByClassName("documentation-text")[0] as HTMLElement;
-
     this.loadMarkdown("../docs/INDEX.md");
   }
 
@@ -22,15 +27,17 @@ export default class DocumentationController implements TabController {
     };
   }
 
-  restoreState(state: TabState): void {}
+  restoreState(state: TabState) {}
 
-  refresh(): void {}
+  refresh() {}
+
+  newAssets() {}
 
   getActiveFields(): string[] {
     return [];
   }
 
-  periodic(): void {
+  periodic() {
     // Update screenshot on index page
     if (this.isIndex) {
       let images = this.TEXT.getElementsByTagName("img");
@@ -74,18 +81,6 @@ export default class DocumentationController implements TabController {
           if (img.src.startsWith("file:///")) {
             img.src = this.fixRelativePath(img.src);
           }
-
-          // Replace GIFs with videos
-          if (img.src.endsWith(".gif")) {
-            let video = document.createElement("video");
-            video.controls = true;
-            video.disablePictureInPicture = true;
-            video.disableRemotePlayback = true;
-            video.autoplay = true;
-            video.loop = true;
-            video.src = img.src.slice(0, -4) + ".mp4";
-            img.parentElement?.replaceChild(video, img);
-          }
         });
 
         // Apply span colors (removed earlier b/c inline styles aren't allowed)
@@ -94,8 +89,15 @@ export default class DocumentationController implements TabController {
           if (color) span.style.color = color.slice(0, -1);
         });
 
+        // Apply code formatting
+        Array.from(this.TEXT.querySelectorAll("pre > code")).forEach((element) => {
+          if (element.getAttribute("class")) {
+            hljs.highlightElement(element as HTMLElement);
+          }
+        });
+
         // App adjustments for index page
-        this.isIndex = markdownPath == "../docs/INDEX.md";
+        this.isIndex = markdownPath === "../docs/INDEX.md";
         if (this.isIndex) {
           // Update screenshot
           if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
@@ -103,7 +105,7 @@ export default class DocumentationController implements TabController {
           }
 
           // Add link to online documentation
-          let list = this.TEXT.getElementsByTagName("ul")[2];
+          let list = this.TEXT.getElementsByTagName("ul")[3];
           let listItem = document.createElement("li");
           list.insertBefore(listItem, list.firstChild);
           let link = document.createElement("a");
@@ -128,10 +130,7 @@ export default class DocumentationController implements TabController {
   }
 
   private fixRelativePath(input: string): string {
-    if (window.platform == "win32") {
-      return "../" + input.slice(11); // Remove "file:///X:/"
-    } else {
-      return "../" + input.slice(8); // Remove "file:///"
-    }
+    let pathDataIndex = input.indexOf("docs");
+    return "../" + input.slice(pathDataIndex);
   }
 }

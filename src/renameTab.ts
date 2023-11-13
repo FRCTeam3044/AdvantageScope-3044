@@ -1,9 +1,9 @@
-const NAME_INPUT = document.getElementById("name") as HTMLInputElement;
-const EXIT_BUTTON = document.getElementById("exit") as HTMLInputElement;
-const CONFIRM_BUTTON = document.getElementById("confirm") as HTMLInputElement;
-
 window.addEventListener("message", (event) => {
-  if (event.source == window && event.data == "port") {
+  const NAME_INPUT = document.getElementById("name") as HTMLInputElement;
+  const EXIT_BUTTON = document.getElementById("exit") as HTMLInputElement;
+  const CONFIRM_BUTTON = document.getElementById("confirm") as HTMLInputElement;
+
+  if (event.source === window && event.data === "port") {
     let messagePort = event.ports[0];
     messagePort.onmessage = (event) => {
       // Update button focus
@@ -23,6 +23,7 @@ window.addEventListener("message", (event) => {
 
       // Update values
       NAME_INPUT.value = oldName;
+      NAME_INPUT.select();
 
       // Close function
       function confirm() {
@@ -35,7 +36,7 @@ window.addEventListener("message", (event) => {
       });
       CONFIRM_BUTTON.addEventListener("click", confirm);
       window.addEventListener("keydown", (event) => {
-        if (event.code == "Enter") confirm();
+        if (event.code === "Enter") confirm();
       });
     };
   }

@@ -1,18 +1,30 @@
+import h337 from "heatmap.js";
 import { Pose2d, Translation2d } from "../geometry";
 import { convert } from "../units";
 import { transformPx } from "../util";
 import Visualizer from "./Visualizer";
+import { typed } from "mathjs";
 
 export default class OdometryVisualizer implements Visualizer {
+  private HEATMAP_GRID_SIZE = 0.1;
+  private HEATMAP_RADIUS = 0.1; // Fraction of field height
+
   private CONTAINER: HTMLElement;
+  private HEATMAP_CONTAINER: HTMLElement;
   private CANVAS: HTMLCanvasElement;
   private IMAGE: HTMLImageElement;
 
+  private heatmap: h337.Heatmap<"value", "x", "y"> | null = null;
+  private lastWidth = 0;
+  private lastHeight = 0;
+  private lastObjectsFlipped: boolean | null = null;
+  private lastHeatmapData = "";
   private lastImageSource = "";
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, heatmapContainer: HTMLElement) {
     this.CONTAINER = container;
     this.CANVAS = container.firstElementChild as HTMLCanvasElement;
+    this.HEATMAP_CONTAINER = heatmapContainer;
     this.IMAGE = document.createElement("img");
     this.CANVAS.appendChild(this.IMAGE);
   }
@@ -21,7 +33,7 @@ export default class OdometryVisualizer implements Visualizer {
     // Set up canvas
     let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
     let isVertical =
-      command.options.orientation == "blue bottom, red top" || command.options.orientation == "red bottom, blue top";
+      command.options.orientation === "blue bottom, red top" || command.options.orientation === "red bottom, blue top";
     let width = isVertical ? this.CONTAINER.clientHeight : this.CONTAINER.clientWidth;
     let height = isVertical ? this.CONTAINER.clientWidth : this.CONTAINER.clientHeight;
     this.CANVAS.style.width = width.toString() + "px";
@@ -48,9 +60,9 @@ export default class OdometryVisualizer implements Visualizer {
     }
 
     // Get game data and update image element
-    let gameData = window.frcData?.field2ds.find((game) => game.title == command.options.game);
+    let gameData = window.assets?.field2ds.find((game) => game.name === command.options.game);
     if (!gameData) return null;
-    if (gameData.path != this.lastImageSource) {
+    if (gameData.path !== this.lastImageSource) {
       this.lastImageSource = gameData.path;
       this.IMAGE.src = gameData.path;
     }
@@ -100,7 +112,7 @@ export default class OdometryVisualizer implements Visualizer {
     let pixelsPerInch = (canvasFieldHeight / gameData.heightInches + canvasFieldWidth / gameData.widthInches) / 2;
 
     // Convert translation to pixel coordinates
-    let calcCoordinates = (translation: Translation2d): [number, number] => {
+    let calcCoordinates = (translation: Translation2d, alwaysFlipped = false): [number, number] => {
       if (!gameData) return [0, 0];
       let positionInches = [convert(translation[0], "meters", "inches"), convert(translation[1], "meters", "inches")];
 
@@ -120,7 +132,7 @@ export default class OdometryVisualizer implements Visualizer {
         positionInches[0] * (canvasFieldWidth / gameData.widthInches),
         positionInches[1] * (canvasFieldHeight / gameData.heightInches)
       ];
-      if (objectsFlipped) {
+      if (objectsFlipped || alwaysFlipped) {
         positionPixels[0] = canvasFieldLeft + canvasFieldWidth - positionPixels[0];
         positionPixels[1] = canvasFieldTop + canvasFieldHeight - positionPixels[1];
       } else {
@@ -129,6 +141,84 @@ export default class OdometryVisualizer implements Visualizer {
       }
       return positionPixels;
     };
+
+    // Recreate heatmap canvas
+    let newHeatmapInstance = false;
+    if (
+      width !== this.lastWidth ||
+      height !== this.lastHeight ||
+      objectsFlipped !== this.lastObjectsFlipped ||
+      !this.heatmap
+    ) {
+      newHeatmapInstance = true;
+      this.lastWidth = width;
+      this.lastHeight = height;
+      this.lastObjectsFlipped = objectsFlipped;
+      while (this.HEATMAP_CONTAINER.firstChild) {
+        this.HEATMAP_CONTAINER.removeChild(this.HEATMAP_CONTAINER.firstChild);
+      }
+      this.HEATMAP_CONTAINER.style.width = width.toString() + "px";
+      this.HEATMAP_CONTAINER.style.height = height.toString() + "px";
+      this.heatmap = h337.create({
+        container: this.HEATMAP_CONTAINER,
+        radius: this.IMAGE.height * imageScalar * this.HEATMAP_RADIUS,
+        maxOpacity: 0.75
+      });
+    }
+
+    // Update heatmap data
+    let heatmapDataString = JSON.stringify(command.poses.heatmap);
+    if (heatmapDataString !== this.lastHeatmapData || newHeatmapInstance) {
+      this.lastHeatmapData = heatmapDataString;
+      let grid: number[][] = [];
+      let fieldWidthMeters = convert(gameData.widthInches, "inches", "meters");
+      let fieldHeightMeters = convert(gameData.heightInches, "inches", "meters");
+      for (let x = 0; x < fieldWidthMeters + this.HEATMAP_GRID_SIZE; x += this.HEATMAP_GRID_SIZE) {
+        let column: number[] = [];
+        grid.push(column);
+        for (let y = 0; y < fieldHeightMeters + this.HEATMAP_GRID_SIZE; y += this.HEATMAP_GRID_SIZE) {
+          column.push(0);
+        }
+      }
+
+      (command.poses.heatmap as Translation2d[]).forEach((translation) => {
+        let gridX = Math.floor(translation[0] / this.HEATMAP_GRID_SIZE);
+        let gridY = Math.floor(translation[1] / this.HEATMAP_GRID_SIZE);
+        if (gridX >= 0 && gridY >= 0 && gridX < grid.length && gridY < grid[0].length) {
+          grid[gridX][gridY] += 1;
+        }
+      });
+
+      let heatmapData: { x: number; y: number; value: number }[] = [];
+      let x = this.HEATMAP_GRID_SIZE / 2;
+      let y: number;
+      let maxValue = 0;
+      grid.forEach((column) => {
+        x += this.HEATMAP_GRID_SIZE;
+        y = this.HEATMAP_GRID_SIZE / 2;
+        column.forEach((gridValue) => {
+          y += this.HEATMAP_GRID_SIZE;
+          let coordinates = calcCoordinates([x, y]);
+          coordinates = [Math.round(coordinates[0]), Math.round(coordinates[1])];
+          maxValue = Math.max(maxValue, gridValue);
+          if (gridValue > 0) {
+            heatmapData.push({
+              x: coordinates[0],
+              y: coordinates[1],
+              value: gridValue
+            });
+          }
+        });
+      });
+      this.heatmap.setData({
+        min: 0,
+        max: maxValue,
+        data: heatmapData
+      });
+    }
+
+    // Copy heatmap to main canvas
+    context.drawImage(this.HEATMAP_CONTAINER.firstElementChild as HTMLCanvasElement, 0, 0);
 
     // Draw trajectories
     command.poses.trajectory.forEach((trajectory: Pose2d[]) => {
@@ -153,7 +243,6 @@ export default class OdometryVisualizer implements Visualizer {
     if (command.poses.robot.length > 0) {
       let robotPos = calcCoordinates(command.poses.robot[0].translation);
       command.poses.visionTarget.forEach((target: Pose2d) => {
-        let robotPose = command.poses.robot[0];
         context.strokeStyle = "lightgreen";
         context.lineWidth = 1 * pixelsPerInch; // 1 inch
         context.beginPath();
@@ -242,44 +331,47 @@ export default class OdometryVisualizer implements Visualizer {
     });
 
     // Draw ghosts
-    command.poses.ghost.forEach((robotPose: Pose2d) => {
-      let robotPos = calcCoordinates(robotPose.translation);
-      let rotation = robotPose.rotation;
-      if (objectsFlipped) rotation += Math.PI;
+    [command.poses.ghost as Pose2d[], command.poses.zebraGhost as Pose2d[]].forEach((ghostSet, index) => {
+      ghostSet.forEach((robotPose: Pose2d) => {
+        const forceFlipped = index === 1; // Zebra data always uses red origin
+        let robotPos = calcCoordinates(robotPose.translation, forceFlipped);
+        let rotation = robotPose.rotation;
+        if (objectsFlipped || forceFlipped) rotation += Math.PI;
 
-      context.globalAlpha = 0.5;
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.fillStyle = "#222";
-      context.strokeStyle = command.allianceRedBumpers ? "red" : "blue";
-      context.lineWidth = 3 * pixelsPerInch;
-      let backLeft = transformPx(robotPos, rotation, [robotLengthPixels * -0.5, robotLengthPixels * 0.5]);
-      let frontLeft = transformPx(robotPos, rotation, [robotLengthPixels * 0.5, robotLengthPixels * 0.5]);
-      let frontRight = transformPx(robotPos, rotation, [robotLengthPixels * 0.5, robotLengthPixels * -0.5]);
-      let backRight = transformPx(robotPos, rotation, [robotLengthPixels * -0.5, robotLengthPixels * -0.5]);
-      context.beginPath();
-      context.moveTo(frontLeft[0], frontLeft[1]);
-      context.lineTo(frontRight[0], frontRight[1]);
-      context.lineTo(backRight[0], backRight[1]);
-      context.lineTo(backLeft[0], backLeft[1]);
-      context.closePath();
-      context.fill();
-      context.stroke();
+        context.globalAlpha = 0.5;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.fillStyle = "#222";
+        context.strokeStyle = command.allianceRedBumpers ? "red" : "blue";
+        context.lineWidth = 3 * pixelsPerInch;
+        let backLeft = transformPx(robotPos, rotation, [robotLengthPixels * -0.5, robotLengthPixels * 0.5]);
+        let frontLeft = transformPx(robotPos, rotation, [robotLengthPixels * 0.5, robotLengthPixels * 0.5]);
+        let frontRight = transformPx(robotPos, rotation, [robotLengthPixels * 0.5, robotLengthPixels * -0.5]);
+        let backRight = transformPx(robotPos, rotation, [robotLengthPixels * -0.5, robotLengthPixels * -0.5]);
+        context.beginPath();
+        context.moveTo(frontLeft[0], frontLeft[1]);
+        context.lineTo(frontRight[0], frontRight[1]);
+        context.lineTo(backRight[0], backRight[1]);
+        context.lineTo(backLeft[0], backLeft[1]);
+        context.closePath();
+        context.fill();
+        context.stroke();
 
-      context.strokeStyle = "white";
-      context.lineWidth = 1.5 * pixelsPerInch;
-      let arrowBack = transformPx(robotPos, rotation, [robotLengthPixels * -0.3, 0]);
-      let arrowFront = transformPx(robotPos, rotation, [robotLengthPixels * 0.3, 0]);
-      let arrowLeft = transformPx(robotPos, rotation, [robotLengthPixels * 0.15, robotLengthPixels * 0.15]);
-      let arrowRight = transformPx(robotPos, rotation, [robotLengthPixels * 0.15, robotLengthPixels * -0.15]);
-      context.beginPath();
-      context.moveTo(arrowBack[0], arrowBack[1]);
-      context.lineTo(arrowFront[0], arrowFront[1]);
-      context.lineTo(arrowLeft[0], arrowLeft[1]);
-      context.moveTo(arrowFront[0], arrowFront[1]);
-      context.lineTo(arrowRight[0], arrowRight[1]);
-      context.stroke();
-      context.globalAlpha = 1;
+        context.strokeStyle = "white";
+        context.lineWidth = 1.5 * pixelsPerInch;
+        let arrowBack = transformPx(robotPos, rotation, [robotLengthPixels * -0.3, 0]);
+        let arrowFront = transformPx(robotPos, rotation, [robotLengthPixels * 0.3, 0]);
+        let arrowLeft = transformPx(robotPos, rotation, [robotLengthPixels * 0.15, robotLengthPixels * 0.15]);
+        let arrowRight = transformPx(robotPos, rotation, [robotLengthPixels * 0.15, robotLengthPixels * -0.15]);
+        context.beginPath();
+        context.moveTo(arrowBack[0], arrowBack[1]);
+        context.lineTo(arrowFront[0], arrowFront[1]);
+        context.lineTo(arrowLeft[0], arrowLeft[1]);
+        context.moveTo(arrowFront[0], arrowFront[1]);
+        context.lineTo(arrowRight[0], arrowRight[1]);
+        context.stroke();
+        context.globalAlpha = 1;
+      });
     });
 
     // Draw arrows
@@ -304,8 +396,8 @@ export default class OdometryVisualizer implements Visualizer {
             robotLengthPixels * (-0.15 + 0.3 * index),
             robotLengthPixels * -0.15
           ]);
-          let crossbarLeft = transformPx(position, rotation, [0, robotLengthPixels * (index == 0 ? 0.15 : 0.1)]);
-          let crossbarRight = transformPx(position, rotation, [0, robotLengthPixels * -(index == 0 ? 0.15 : 0.1)]);
+          let crossbarLeft = transformPx(position, rotation, [0, robotLengthPixels * (index === 0 ? 0.15 : 0.1)]);
+          let crossbarRight = transformPx(position, rotation, [0, robotLengthPixels * -(index === 0 ? 0.15 : 0.1)]);
           context.beginPath();
           context.moveTo(arrowBack[0], arrowBack[1]);
           context.lineTo(arrowFront[0], arrowFront[1]);
@@ -320,6 +412,29 @@ export default class OdometryVisualizer implements Visualizer {
         });
       }
     );
+
+    // Draw Zebra markers
+    context.font =
+      Math.round(12 * pixelsPerInch).toString() + "px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont";
+    Object.entries(command.poses.zebraMarker).forEach(([team, value]) => {
+      let typedValue = value as {
+        translation: Translation2d;
+        alliance: string;
+      };
+      let coordinates = calcCoordinates(typedValue.translation, true);
+
+      context.fillStyle = typedValue.alliance;
+      context.strokeStyle = "white";
+      context.lineWidth = 2 * pixelsPerInch;
+      context.beginPath();
+      context.arc(coordinates[0], coordinates[1], 6 * pixelsPerInch, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+
+      context.fillStyle = "white";
+      context.textAlign = "center";
+      context.fillText(team, coordinates[0], coordinates[1] - 15 * pixelsPerInch);
+    });
 
     // Return target aspect ratio
     return isVertical ? fieldHeight / fieldWidth : fieldWidth / fieldHeight;

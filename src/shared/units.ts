@@ -12,8 +12,7 @@ export const GROUPED_UNITS: { [id: string]: { [id: string]: number } } = {
   angle: {
     radians: 1,
     degrees: 180 / Math.PI,
-    rotations: 1 / (Math.PI * 2),
-    "Falcon counts": 2048 / (Math.PI * 2)
+    rotations: 1 / (Math.PI * 2)
   },
   velocity: {
     "meters/second": 1,
@@ -25,8 +24,7 @@ export const GROUPED_UNITS: { [id: string]: { [id: string]: number } } = {
     "radians/second": 1,
     "degrees/second": 180 / Math.PI,
     "rotations/second": 1 / (Math.PI * 2),
-    "rotations/minute": 60 / (Math.PI * 2),
-    "Falcon velocity": 2048 / (Math.PI * 2 * 10)
+    "rotations/minute": 60 / (Math.PI * 2)
   },
   acceleration: {
     "meters/second^2": 1,
@@ -59,12 +57,12 @@ export function convert(value: number, from: string, to: string): number {
   if (!(from in ALL_UNITS && to in ALL_UNITS)) throw "Invalid unit provided";
 
   let standardValue;
-  if (from == "fahrenheit") {
+  if (from === "fahrenheit") {
     standardValue = (value - 32) / 1.8;
   } else {
     standardValue = value / ALL_UNITS[from];
   }
-  if (to == "fahrenheit") {
+  if (to === "fahrenheit") {
     return standardValue * 1.8 + 32;
   } else {
     return standardValue * ALL_UNITS[to];
@@ -72,7 +70,7 @@ export function convert(value: number, from: string, to: string): number {
 }
 
 export function convertWithPreset(value: number, preset: UnitConversionPreset) {
-  if (preset.type == null || preset.from == undefined || preset.to == undefined) {
+  if (preset.type === null || preset.from === undefined || preset.to === undefined) {
     return value * preset.factor;
   } else {
     return convert(value, preset.from, preset.to) * preset.factor;

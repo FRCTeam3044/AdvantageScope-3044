@@ -34,11 +34,11 @@ export default class Selection {
     });
 
     window.addEventListener("keydown", (event) => {
-      if (event.target != document.body) return;
+      if (event.target !== document.body) return;
       switch (event.code) {
         case "Space":
           event.preventDefault();
-          if (this.mode == SelectionMode.Playback || this.mode == SelectionMode.Locked) {
+          if (this.mode === SelectionMode.Playback || this.mode === SelectionMode.Locked) {
             this.pause();
           } else {
             this.play();
@@ -47,7 +47,7 @@ export default class Selection {
 
         case "KeyL":
           event.preventDefault();
-          if (this.mode == SelectionMode.Locked) {
+          if (this.mode === SelectionMode.Locked) {
             this.unlock();
           } else {
             this.lock();
@@ -66,10 +66,10 @@ export default class Selection {
   private setMode(newMode: SelectionMode) {
     this.mode = newMode;
     document.documentElement.style.setProperty("--show-lock-buttons", this.liveConnected ? "1" : "0");
-    this.PLAY_BUTTON.hidden = this.mode == SelectionMode.Playback || this.mode == SelectionMode.Locked;
-    this.PAUSE_BUTTON.hidden = this.mode == SelectionMode.Idle || this.mode == SelectionMode.Static;
-    this.LOCK_BUTTON.hidden = !this.liveConnected || this.mode == SelectionMode.Locked;
-    this.UNLOCK_BUTTON.hidden = !this.liveConnected || this.mode != SelectionMode.Locked;
+    this.PLAY_BUTTON.hidden = this.mode === SelectionMode.Playback || this.mode === SelectionMode.Locked;
+    this.PAUSE_BUTTON.hidden = this.mode === SelectionMode.Idle || this.mode === SelectionMode.Static;
+    this.LOCK_BUTTON.hidden = !this.liveConnected || this.mode === SelectionMode.Locked;
+    this.UNLOCK_BUTTON.hidden = !this.liveConnected || this.mode !== SelectionMode.Locked;
   }
 
   /** Updates the hovered time. */
@@ -88,23 +88,26 @@ export default class Selection {
       case SelectionMode.Idle:
         return null;
       case SelectionMode.Static:
-        return this.staticTime;
+        return Math.max(this.staticTime, window.log.getTimestampRange()[0]);
       case SelectionMode.Playback:
         let time = (this.now() - this.playbackStartReal) * this.playbackSpeed + this.playbackStartLog;
-        let lastTime = window.log.getTimestampRange()[1];
-        if (time > lastTime) {
+        let maxTime = window.log.getTimestampRange()[1];
+        if (this.liveTimeSupplier !== null) {
+          maxTime = Math.max(maxTime, this.liveTimeSupplier());
+        }
+        if (time > maxTime) {
           if (this.liveConnected) {
             this.setMode(SelectionMode.Locked);
           } else {
             this.setMode(SelectionMode.Static);
-            this.staticTime = lastTime;
+            this.staticTime = maxTime;
           }
-          return lastTime;
+          return maxTime;
         } else {
-          return time;
+          return Math.max(time, window.log.getTimestampRange()[0]);
         }
       case SelectionMode.Locked:
-        if (this.liveTimeSupplier == null) return 0;
+        if (this.liveTimeSupplier === null) return 0;
         return this.liveTimeSupplier();
     }
   }
@@ -150,9 +153,13 @@ export default class Selection {
         this.playbackStartReal = this.now();
         break;
       case SelectionMode.Static:
-        if (this.staticTime < window.log.getTimestampRange()[1]) {
+        let maxTime = window.log.getTimestampRange()[1];
+        if (this.liveTimeSupplier !== null) {
+          maxTime = Math.max(maxTime, this.liveTimeSupplier());
+        }
+        if (this.staticTime < maxTime) {
           this.setMode(SelectionMode.Playback);
-          this.playbackStartLog = this.staticTime;
+          this.playbackStartLog = Math.max(this.staticTime, window.log.getTimestampRange()[0]);
           this.playbackStartReal = this.now();
         }
         break;
@@ -172,7 +179,7 @@ export default class Selection {
       case SelectionMode.Locked:
         let selectedTime = this.getSelectedTime();
         this.setMode(SelectionMode.Static);
-        this.staticTime = selectedTime != null ? selectedTime : 0;
+        this.staticTime = selectedTime !== null ? selectedTime : 0;
         break;
     }
   }
@@ -186,10 +193,10 @@ export default class Selection {
 
   /** Exits locked mode. */
   unlock() {
-    if (this.mode == SelectionMode.Locked) {
+    if (this.mode === SelectionMode.Locked) {
       let selectedTime = this.getSelectedTime();
       this.setMode(SelectionMode.Static);
-      this.staticTime = selectedTime != null ? selectedTime : 0;
+      this.staticTime = selectedTime !== null ? selectedTime : 0;
     }
   }
 
@@ -214,7 +221,7 @@ export default class Selection {
   }
 
   getCurrentLiveTime(): number | null {
-    if (this.liveTimeSupplier == null) {
+    if (this.liveTimeSupplier === null) {
       return null;
     } else {
       return this.liveTimeSupplier();
@@ -223,9 +230,9 @@ export default class Selection {
 
   /** Updates the playback speed. */
   setPlaybackSpeed(speed: number) {
-    if (this.mode == SelectionMode.Playback) {
+    if (this.mode === SelectionMode.Playback) {
       let selectedTime = this.getSelectedTime();
-      this.playbackStartLog = selectedTime != null ? selectedTime : 0;
+      this.playbackStartLog = selectedTime !== null ? selectedTime : 0;
       this.playbackStartReal = this.now();
     }
     this.playbackSpeed = speed;

@@ -7,8 +7,6 @@ export default class JoysticksController extends TimelineVizController {
   private CONFIG_IDS: HTMLInputElement[];
   private CONFIG_LAYOUTS: HTMLInputElement[];
 
-  private lastOptions: { [id: string]: any } | null = null;
-
   constructor(content: HTMLElement) {
     super(
       content,
@@ -20,18 +18,47 @@ export default class JoysticksController extends TimelineVizController {
 
     // Get option inputs
     let cells = content.getElementsByClassName("joysticks-config")[0].firstElementChild?.lastElementChild?.children;
-    this.CONFIG_IDS = Array.from(cells == null ? [] : cells).map((cell) => cell.firstElementChild as HTMLInputElement);
-    this.CONFIG_LAYOUTS = Array.from(cells == null ? [] : cells).map(
+    this.CONFIG_IDS = Array.from(cells === undefined ? [] : cells).map(
+      (cell) => cell.firstElementChild as HTMLInputElement
+    );
+    this.CONFIG_LAYOUTS = Array.from(cells === undefined ? [] : cells).map(
       (cell) => cell.lastElementChild as HTMLInputElement
     );
+
+    // Add initial set of options
+    this.resetLayoutOptions();
 
     // Enforce range
     this.CONFIG_IDS.forEach((input) => {
       input.addEventListener("change", () => {
         if (Number(input.value) < 0) input.value = "0";
         if (Number(input.value) > 5) input.value = "5";
-        if (Number(input.value) % 1 != 0) input.value = Math.round(Number(input.value)).toString();
+        if (Number(input.value) % 1 !== 0) input.value = Math.round(Number(input.value)).toString();
       });
+    });
+  }
+
+  /** Clears all options for the layout selectors then updates them with the latest options. */
+  private resetLayoutOptions() {
+    let options = ["None", "Generic Joystick"];
+    if (window.assets !== null) {
+      options = [...options, ...window.assets.joysticks.map((joystick) => joystick.name)];
+    }
+    this.CONFIG_LAYOUTS.forEach((select) => {
+      let value = select.value;
+      while (select.firstChild) {
+        select.removeChild(select.firstChild);
+      }
+      options.forEach((title) => {
+        let option = document.createElement("option");
+        option.innerText = title;
+        select.appendChild(option);
+      });
+      if (options.includes(value)) {
+        select.value = value;
+      } else {
+        select.value = options[0];
+      }
     });
   }
 
@@ -43,13 +70,17 @@ export default class JoysticksController extends TimelineVizController {
   }
 
   set options(options: { [id: string]: any }) {
-    this.lastOptions = options;
+    this.resetLayoutOptions();
     this.CONFIG_IDS.forEach((input, index) => {
       input.value = options.ids[index];
     });
     this.CONFIG_LAYOUTS.forEach((input, index) => {
       input.value = options.layouts[index];
     });
+  }
+
+  newAssets() {
+    this.resetLayoutOptions();
   }
 
   getAdditionalActiveFields(): string[] {
@@ -65,21 +96,6 @@ export default class JoysticksController extends TimelineVizController {
   }
 
   getCommand(time: number) {
-    // Add layout options
-    let newLayouts = false;
-    this.CONFIG_LAYOUTS.forEach((input) => {
-      if (input.children.length == 0 && window.frcData) {
-        newLayouts = true;
-        ["None", "Generic Joystick", ...window.frcData.joysticks.map((joystick) => joystick.title)].forEach((title) => {
-          let option = document.createElement("option");
-          option.innerText = title;
-          input.appendChild(option);
-        });
-      }
-    });
-    if (newLayouts && this.lastOptions) this.options = this.lastOptions;
-
-    // Read data
     let command: any[] = [];
     this.CONFIG_LAYOUTS.forEach((layoutInput, index) => {
       if (layoutInput.value !== "None") {

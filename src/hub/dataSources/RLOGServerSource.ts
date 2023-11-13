@@ -6,7 +6,6 @@ export default class RLOGServerSource extends LiveDataSource {
   private RECONNECT_DELAY_MS = 500;
   private MIN_LIVE_RESYNC_SECS = 0.15; // Resync live data if out of sync by longer than this
 
-  private log: Log | null = null;
   private decoder: RLOGDecoder | null = null;
   private timeout: NodeJS.Timeout | null = null;
   private liveZeroTime = 0;
@@ -18,7 +17,7 @@ export default class RLOGServerSource extends LiveDataSource {
   ) {
     super.connect(address, statusCallback, outputCallback);
 
-    if (window.preferences == null) {
+    if (window.preferences === null) {
       this.setStatus(LiveDataSourceStatus.Error);
     } else {
       this.log = new Log();
@@ -37,11 +36,11 @@ export default class RLOGServerSource extends LiveDataSource {
   }
 
   handleMainMessage(data: any) {
-    if (this.log == null || this.decoder == null) return;
-    if (data.uuid != this.UUID) return;
-    if (this.status == LiveDataSourceStatus.Stopped) return;
+    if (this.log === null || this.decoder === null) return;
+    if (data.uuid !== this.UUID) return;
+    if (this.status === LiveDataSourceStatus.Stopped) return;
 
-    if (this.timeout != null) {
+    if (this.timeout !== null) {
       clearTimeout(this.timeout);
       this.timeout = null;
     }
@@ -62,7 +61,7 @@ export default class RLOGServerSource extends LiveDataSource {
         }
 
         // Run output callback
-        if (this.outputCallback != null)
+        if (this.outputCallback !== null)
           this.outputCallback(this.log, () => {
             if (this.log) {
               return new Date().getTime() / 1000 - this.liveZeroTime + this.log.getTimestampRange()[0];
@@ -84,7 +83,7 @@ export default class RLOGServerSource extends LiveDataSource {
     this.setStatus(LiveDataSourceStatus.Connecting);
     window.sendMainMessage("live-rlog-stop");
     this.timeout = setTimeout(() => {
-      if (window.preferences == null) {
+      if (window.preferences === null) {
         // No preferences, can't reconnect
         this.setStatus(LiveDataSourceStatus.Error);
       } else {

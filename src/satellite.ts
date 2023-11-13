@@ -1,4 +1,4 @@
-import { FRCData } from "./shared/FRCData";
+import { AdvantageScopeAssets } from "./shared/AdvantageScopeAssets";
 import NamedMessage from "./shared/NamedMessage";
 import Preferences from "./shared/Preferences";
 import TabType, { getTabIcon } from "./shared/TabType";
@@ -9,6 +9,7 @@ import OdometryVisualizer from "./shared/visualizers/OdometryVisualizer";
 import PointsVisualizer from "./shared/visualizers/PointsVisualizer";
 import SwerveVisualizer from "./shared/visualizers/SwerveVisualizer";
 import ThreeDimensionVisualizer from "./shared/visualizers/ThreeDimensionVisualizer";
+import ThreeDimensionVisualizerSwitching from "./shared/visualizers/ThreeDimensionVisualizerSwitching";
 import VideoVisualizer from "./shared/visualizers/VideoVisualizer";
 import Visualizer from "./shared/visualizers/Visualizer";
 
@@ -16,7 +17,7 @@ const MAX_ASPECT_RATIO = 5;
 
 declare global {
   interface Window {
-    frcData: FRCData | null;
+    assets: AdvantageScopeAssets | null;
     preferences: Preferences | null;
     sendMainMessage: (name: string, data?: any) => void;
   }
@@ -30,20 +31,20 @@ let lastAspectRatio: number | null = null;
 let lastCommand: any = null;
 
 window.sendMainMessage = (name: string, data?: any) => {
-  if (messagePort != null) {
+  if (messagePort !== null) {
     let message: NamedMessage = { name: name, data: data };
     messagePort.postMessage(message);
   }
 };
 
 window.addEventListener("message", (event) => {
-  if (event.source == window && event.data == "port") {
+  if (event.source === window && event.data === "port") {
     messagePort = event.ports[0];
     messagePort.onmessage = (event) => {
       let message: NamedMessage = event.data;
       switch (message.name) {
-        case "set-frc-data":
-          window.frcData = message.data;
+        case "set-assets":
+          window.assets = message.data;
           break;
 
         case "set-preferences":
@@ -54,23 +55,27 @@ window.addEventListener("message", (event) => {
           type = message.data as TabType;
 
           // Update visible elements
-          (document.getElementById("odometry") as HTMLElement).hidden = type != TabType.Odometry;
-          (document.getElementById("threeDimension") as HTMLElement).hidden = type != TabType.ThreeDimension;
-          (document.getElementById("video") as HTMLElement).hidden = type != TabType.Video;
-          (document.getElementById("joysticks") as HTMLElement).hidden = type != TabType.Joysticks;
-          (document.getElementById("swerve") as HTMLElement).hidden = type != TabType.Swerve;
-          (document.getElementById("mechanism") as HTMLElement).hidden = type != TabType.Mechanism;
-          (document.getElementById("points") as HTMLElement).hidden = type != TabType.Points;
+          (document.getElementById("odometry") as HTMLElement).hidden = type !== TabType.Odometry;
+          (document.getElementById("threeDimension") as HTMLElement).hidden = type !== TabType.ThreeDimension;
+          (document.getElementById("video") as HTMLElement).hidden = type !== TabType.Video;
+          (document.getElementById("joysticks") as HTMLElement).hidden = type !== TabType.Joysticks;
+          (document.getElementById("swerve") as HTMLElement).hidden = type !== TabType.Swerve;
+          (document.getElementById("mechanism") as HTMLElement).hidden = type !== TabType.Mechanism;
+          (document.getElementById("points") as HTMLElement).hidden = type !== TabType.Points;
 
           // Create visualizer
           switch (type) {
             case TabType.Odometry:
-              visualizer = new OdometryVisualizer(document.getElementById("odometryCanvasContainer") as HTMLElement);
+              visualizer = new OdometryVisualizer(
+                document.getElementById("odometryCanvasContainer") as HTMLElement,
+                document.getElementById("odometryHeatmapContainer") as HTMLElement
+              );
               break;
             case TabType.ThreeDimension:
-              visualizer = new ThreeDimensionVisualizer(
+              visualizer = new ThreeDimensionVisualizerSwitching(
                 document.body,
                 document.getElementById("threeDimensionCanvas") as HTMLCanvasElement,
+                document.getElementById("threeDimensionAnnotations") as HTMLElement,
                 document.getElementById("threeDimensionAlert") as HTMLElement
               );
               break;
@@ -102,7 +107,7 @@ window.addEventListener("message", (event) => {
           // Update title
           let titleElement = document.getElementsByTagName("title")[0] as HTMLElement;
           let newTitle = message.data.title;
-          if (newTitle != title) {
+          if (newTitle !== title) {
             titleElement.innerHTML =
               (type ? getTabIcon(type) + " " : "") + htmlEncode(newTitle) + " &mdash; AdvantageScope";
             title = newTitle;
@@ -117,8 +122,14 @@ window.addEventListener("message", (event) => {
           break;
 
         case "set-3d-camera":
-          if (type == TabType.ThreeDimension) {
+          if (type === TabType.ThreeDimension) {
             (visualizer as ThreeDimensionVisualizer).set3DCamera(message.data);
+          }
+          break;
+
+        case "edit-fov":
+          if (type === TabType.ThreeDimension) {
+            (visualizer as ThreeDimensionVisualizer).setFov(message.data);
           }
           break;
 
@@ -131,7 +142,7 @@ window.addEventListener("message", (event) => {
 });
 
 window.addEventListener("resize", () => {
-  if (visualizer == null || lastCommand == null) {
+  if (visualizer === null || lastCommand === null) {
     return;
   }
   let aspectRatio = visualizer.render(lastCommand);
@@ -139,7 +150,7 @@ window.addEventListener("resize", () => {
 });
 
 function processAspectRatio(aspectRatio: number | null) {
-  if (aspectRatio != lastAspectRatio) {
+  if (aspectRatio !== lastAspectRatio) {
     lastAspectRatio = aspectRatio;
     if (aspectRatio !== null) {
       if (aspectRatio > MAX_ASPECT_RATIO) aspectRatio = MAX_ASPECT_RATIO;

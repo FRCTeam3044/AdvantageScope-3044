@@ -24,7 +24,7 @@ export default class MetadataController implements TabController {
   restoreState(state: TabState) {}
 
   getActiveFields(): string[] {
-    return ["/RealMetadata", "/ReplayMetadata", "/AdvantageKit/RealMetadata", "/AdvantageKit/ReplayMetadata"];
+    return ["/RealMetadata", "/ReplayMetadata", "NT:/AdvantageKit/RealMetadata", "NT:/AdvantageKit/ReplayMetadata"];
   }
 
   periodic() {}
@@ -55,13 +55,13 @@ export default class MetadataController implements TabController {
     if ("ReplayMetadata" in tree) {
       scanTree(tree["ReplayMetadata"], "/ReplayMetadata", false);
     }
-    if ("AdvantageKit" in tree) {
-      let akitTable = tree["AdvantageKit"].children;
+    if ("NT" in tree && "AdvantageKit" in tree["NT"].children) {
+      let akitTable = tree["NT"].children["AdvantageKit"].children;
       if ("RealMetadata" in akitTable) {
-        scanTree(akitTable["RealMetadata"], "/AdvantageKit/RealMetadata", true);
+        scanTree(akitTable["RealMetadata"], "NT:/AdvantageKit/RealMetadata", true);
       }
       if ("ReplayMetadata" in akitTable) {
-        scanTree(akitTable["ReplayMetadata"], "/AdvantageKit/ReplayMetadata", false);
+        scanTree(akitTable["ReplayMetadata"], "NT:/AdvantageKit/ReplayMetadata", false);
       }
     }
 
@@ -91,13 +91,13 @@ export default class MetadataController implements TabController {
       }
 
       cells[0].innerText = key.substring(1);
-      if (data[key].real != null) {
+      if (data[key].real !== null) {
         cells[1].innerText = data[key].real as string;
       } else {
         cells[1].innerText = "NA";
         cells[1].classList.add("no-data");
       }
-      if (data[key].replay != null) {
+      if (data[key].replay !== null) {
         cells[2].innerText = data[key].replay as string;
       } else {
         cells[2].innerText = "NA";
@@ -110,4 +110,6 @@ export default class MetadataController implements TabController {
     this.NO_DATA_ALERT.hidden = showTable;
     this.TABLE_CONTAINER.hidden = !showTable;
   }
+
+  newAssets() {}
 }

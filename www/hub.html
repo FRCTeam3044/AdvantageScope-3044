@@ -1,18 +1,19 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; connect-src ws: wss: file: blob:"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; connect-src ws: http: file: blob:"
     />
     <meta
       http-equiv="X-Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; connect-src ws: wss: file: blob:"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; connect-src ws: http: file: blob:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="global.css" />
     <link rel="stylesheet" href="hub.css" />
+    <link rel="stylesheet" href="code.css" />
     <script type="module" src="../bundles/hub.js"></script>
     <title>AdvantageScope</title>
   </head>
@@ -57,21 +58,18 @@
 
     <span id="dragItem"></span>
 
-    <div class="loading-glow">
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-      <div class="loading-glow-element"></div>
-    </div>
+    <div class="loading-glow"></div>
+
+    <div class="search-results" hidden></div>
 
     <div class="main-view">
       <div class="side-bar">
         <div class="side-bar-title">No data available</div>
+
+        <div class="side-bar-search-container">
+          <input class="side-bar-search" type="search" placeholder="Search" />
+          <img class="side-bar-search-icon" src="symbols/magnifyingglass.svg" />
+        </div>
 
         <span id="fieldItemIconTemplates" hidden>
           <svg class="field-item-icon" height="12" width="12">
@@ -87,6 +85,8 @@
 
         <span id="fieldList"></span>
       </div>
+
+      <div class="fps"></div>
 
       <div class="viewer">
         <div class="tab-bar"></div>
@@ -287,6 +287,9 @@
 
           <!-- Timeline visualizer -->
           <div class="tab-content">
+            <button class="timeline-viz-reset-button" tabindex="-1">
+              <img src="symbols/arrow.right.to.line.svg" />
+            </button>
             <div class="timeline-viz-timeline-container">
               <input
                 class="timeline-viz-timeline-slider"
@@ -300,6 +303,13 @@
               />
               <div class="timeline-viz-timeline-marker-container"></div>
             </div>
+            <div class="timeline-viz-timeline-label"></div>
+            <button class="timeline-viz-hide-button" tabindex="-1">
+              <img src="symbols/eye.slash.svg" />
+            </button>
+            <button class="timeline-viz-show-button" tabindex="-1" hidden>
+              <img src="symbols/eye.svg" />
+            </button>
             <button class="timeline-viz-popup-button" tabindex="-1">
               <img src="symbols/plus.rectangle.on.rectangle.svg" />
             </button>
@@ -311,6 +321,7 @@
             <div class="odometry-canvas-container">
               <canvas></canvas>
             </div>
+            <div class="odometry-heatmap-container" hidden></div>
             <table class="timeline-viz-config">
               <tbody>
                 <tr>
@@ -319,7 +330,11 @@
                   <th>Robot Config</th>
                 </tr>
                 <tr>
-                  <td rowspan="3" class="list"></td>
+                  <td rowspan="3" class="list">
+                    <div class="list-content"></div>
+                    <div class="list-shadow-top"></div>
+                    <div class="list-shadow-bottom"></div>
+                  </td>
                   <td>
                     <span class="label">Game:</span>
                     <select tabindex="-1"></select>
@@ -385,6 +400,7 @@
           <span>
             <div class="three-dimension-canvas-container">
               <canvas class="three-dimension-canvas"></canvas>
+              <div class="three-dimension-annotations"></div>
               <div class="three-dimension-alert" hidden>
                 Robot pose not available
                 <br />
@@ -399,8 +415,16 @@
                   <th>Config</th>
                 </tr>
                 <tr>
-                  <td rowspan="3" class="list"></td>
-                  <td rowspan="3" class="list"></td>
+                  <td rowspan="3" class="list">
+                    <div class="list-content"></div>
+                    <div class="list-shadow-top"></div>
+                    <div class="list-shadow-bottom"></div>
+                  </td>
+                  <td rowspan="3" class="list">
+                    <div class="list-content"></div>
+                    <div class="list-shadow-top"></div>
+                    <div class="list-shadow-bottom"></div>
+                  </td>
                   <td>
                     <span class="label">Field:</span>
                     <select tabindex="-1"></select>
@@ -445,11 +469,23 @@
             <table class="timeline-viz-config">
               <tbody>
                 <tr>
-                  <th>Source</th>
+                  <th>Choose Source</th>
                   <th colspan="2">Synchronization</th>
                 </tr>
                 <tr>
-                  <td class="video-source" rowspan="2">&lt;Click Here&gt;</td>
+                  <td class="video-source" rowspan="2">
+                    <button tabindex="-1">
+                      <img src="symbols/doc.fill.svg" />
+                    </button>
+                    <button tabindex="-1">
+                      <img src="symbols/list.clipboard.fill.svg" />
+                      <svg><path /></svg>
+                    </button>
+                    <button tabindex="-1">
+                      <img src="symbols/tba_lamp.svg" />
+                      <svg><path /></svg>
+                    </button>
+                  </td>
                   <td colspan="2">
                     <button tabindex="-1">
                       <img src="symbols/lock.open.svg" />
@@ -578,7 +614,7 @@
                     <span class="label">Arrangement:</span>
                     <select tabindex="-1">
                       <option value="0,1,2,3">FL, FR, BL, BR</option>
-                      <option value="1,2,3,2">FR, FL, BR, BL</option>
+                      <option value="1,0,3,2">FR, FL, BR, BL</option>
                       <option value="0,1,3,2">FL, FR, BR, BL</option>
                       <option value="0,2,3,1">FL, BL, BR, FR</option>
                       <option value="1,3,2,0">FR, BR, BL, FL</option>

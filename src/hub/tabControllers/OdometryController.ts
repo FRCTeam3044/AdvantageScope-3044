@@ -1,12 +1,37 @@
-import { Pose2d, Translation2d } from "../../shared/geometry";
-import LoggableType from "../../shared/log/LoggableType";
-import { ALLIANCE_KEYS, getIsRedAlliance } from "../../shared/log/LogUtil";
 import TabType from "../../shared/TabType";
+import {
+  Pose2d,
+  Translation2d,
+  logReadNumberArrayToPose2dArray,
+  logReadPose2d,
+  logReadPose2dArray,
+  logReadTrajectoryToPose2dArray,
+  logReadTranslation2dArrayToPose2dArray,
+  logReadTranslation2dToPose2d,
+  numberArrayToPose2dArray
+} from "../../shared/geometry";
+import { ALLIANCE_KEYS, getEnabledData, getIsRedAlliance, getOrDefault } from "../../shared/log/LogUtil";
+import LoggableType from "../../shared/log/LoggableType";
 import { convert } from "../../shared/units";
+import { scaleValue } from "../../shared/util";
 import OdometryVisualizer from "../../shared/visualizers/OdometryVisualizer";
 import TimelineVizController from "./TimelineVizController";
 
 export default class OdometryController extends TimelineVizController {
+  private static HEATMAP_DT = 0.1;
+  private static TRAIL_LENGTH_SECS = 5;
+  private static POSE_TYPES = [
+    "Robot",
+    "Ghost",
+    "Trajectory",
+    "Vision Target",
+    "Heatmap",
+    "Heatmap (Enabled)",
+    "Arrow (Front)",
+    "Arrow (Center)",
+    "Arrow (Back)"
+  ];
+
   private GAME: HTMLInputElement;
   private GAME_SOURCE_LINK: HTMLElement;
   private UNIT_DISTANCE: HTMLInputElement;
@@ -18,9 +43,7 @@ export default class OdometryController extends TimelineVizController {
   private ALLIANCE_ORIGIN: HTMLInputElement;
   private ORIENTATION: HTMLInputElement;
 
-  private TRAIL_LENGTH_SECS = 5;
   private lastUnitDistance = "meters";
-  private lastOptions: { [id: string]: any } | null = null;
 
   constructor(content: HTMLElement) {
     let configBody = content.getElementsByClassName("timeline-viz-config")[0].firstElementChild as HTMLElement;
@@ -31,13 +54,35 @@ export default class OdometryController extends TimelineVizController {
       [
         {
           element: configBody.children[1].firstElementChild as HTMLElement,
-          types: [LoggableType.NumberArray],
+          types: [
+            LoggableType.NumberArray,
+            "Pose2d",
+            "Pose2d[]",
+            "Transform2d",
+            "Transform2d[]",
+            "Translation2d",
+            "Translation2d[]",
+            "Trajectory",
+            "ZebraTranslation"
+          ],
           options: [
-            ["Robot", "Ghost", "Trajectory", "Vision Target", "Arrow (Front)", "Arrow (Center)", "Arrow (Back)"]
-          ]
+            OdometryController.POSE_TYPES, // NumberArray
+            OdometryController.POSE_TYPES.filter((x) => x !== "Trajectory"), // Pose2d
+            OdometryController.POSE_TYPES, // Pose2d[]
+            OdometryController.POSE_TYPES.filter((x) => x !== "Trajectory"), // Transform2d
+            OdometryController.POSE_TYPES, // Transform2d[]
+            ["Vision Target", "Heatmap", "Heatmap (Enabled)"], // Translation2d
+            ["Trajectory", "Vision Target", "Heatmap", "Heatmap (Enabled)"], // Translation2d[]
+            ["Trajectory"], // Trajectory
+            ["Zebra Marker", "Ghost"] // ZebraTranslation
+          ],
+          autoAdvanceOptions: [true, true, true, true, true, true, true, true, false]
         }
       ],
-      new OdometryVisualizer(content.getElementsByClassName("odometry-canvas-container")[0] as HTMLElement)
+      new OdometryVisualizer(
+        content.getElementsByClassName("odometry-canvas-container")[0] as HTMLElement,
+        content.getElementsByClassName("odometry-heatmap-container")[0] as HTMLElement
+      )
     );
 
     // Get option inputs
@@ -56,12 +101,15 @@ export default class OdometryController extends TimelineVizController {
     this.ALLIANCE_BUMPERS.value = "auto";
     this.ALLIANCE_ORIGIN.value = "blue";
 
+    // Add initial set of options
+    this.resetGameOptions();
+
     // Unit conversion for distance
     this.UNIT_DISTANCE.addEventListener("change", () => {
       let newUnit = this.UNIT_DISTANCE.value;
-      if (newUnit != this.lastUnitDistance) {
+      if (newUnit !== this.lastUnitDistance) {
         let oldSize = Number(this.SIZE.value);
-        if (newUnit == "meters") {
+        if (newUnit === "meters") {
           this.SIZE.value = (Math.round(convert(oldSize, "inches", "meters") * 1000) / 1000).toString();
           this.SIZE.step = "0.01";
         } else {
@@ -75,21 +123,50 @@ export default class OdometryController extends TimelineVizController {
 
     // Bind source link
     this.GAME.addEventListener("change", () => {
-      let config = window.frcData?.field2ds.find((game) => game.title == this.GAME.value);
-      this.GAME_SOURCE_LINK.hidden = config != undefined && config.sourceUrl == undefined;
+      let config = window.assets?.field2ds.find((game) => game.name === this.GAME.value);
+      this.GAME_SOURCE_LINK.hidden = config !== undefined && config.sourceUrl === undefined;
     });
     this.GAME_SOURCE_LINK.addEventListener("click", () => {
       window.sendMainMessage(
         "open-link",
-        window.frcData?.field2ds.find((game) => game.title == this.GAME.value)?.sourceUrl
+        window.assets?.field2ds.find((game) => game.name === this.GAME.value)?.sourceUrl
       );
     });
 
     // Enforce side length range
     this.SIZE.addEventListener("change", () => {
       if (Number(this.SIZE.value) < 0) this.SIZE.value = "0.1";
-      if (Number(this.SIZE.value) == 0) this.SIZE.value = "0.1";
+      if (Number(this.SIZE.value) === 0) this.SIZE.value = "0.1";
     });
+  }
+
+  /** Clears all options from the game selector then updates it with the latest options. */
+  private resetGameOptions() {
+    let value = this.GAME.value;
+    while (this.GAME.firstChild) {
+      this.GAME.removeChild(this.GAME.firstChild);
+    }
+    let options: string[] = [];
+    if (window.assets !== null) {
+      options = window.assets.field2ds.map((game) => game.name);
+      options.forEach((title) => {
+        let option = document.createElement("option");
+        option.innerText = title;
+        this.GAME.appendChild(option);
+      });
+    }
+    if (options.includes(value)) {
+      this.GAME.value = value;
+    } else {
+      this.GAME.value = options[0];
+    }
+    this.updateGameSourceLink();
+  }
+
+  /** Shows or hides the source link based on the selected game. */
+  private updateGameSourceLink() {
+    let fieldConfig = window.assets?.field2ds.find((game) => game.name === this.GAME.value);
+    this.GAME_SOURCE_LINK.hidden = fieldConfig !== undefined && fieldConfig.sourceUrl === undefined;
   }
 
   get options(): { [id: string]: any } {
@@ -106,7 +183,7 @@ export default class OdometryController extends TimelineVizController {
   }
 
   set options(options: { [id: string]: any }) {
-    this.lastOptions = options;
+    this.resetGameOptions();
     this.GAME.value = options.game;
     this.UNIT_DISTANCE.value = options.unitDistance;
     this.UNIT_ROTATION.value = options.unitRotation;
@@ -117,10 +194,11 @@ export default class OdometryController extends TimelineVizController {
     this.ALLIANCE_BUMPERS.value = options.allianceBumpers;
     this.ALLIANCE_ORIGIN.value = options.allianceOrigin;
     this.ORIENTATION.value = options.orientation;
+    this.updateGameSourceLink();
+  }
 
-    // Set whether source link is hidden
-    let fieldConfig = window.frcData?.field2ds.find((game) => game.title == this.GAME.value);
-    this.GAME_SOURCE_LINK.hidden = fieldConfig != undefined && fieldConfig.sourceUrl == undefined;
+  newAssets() {
+    this.resetGameOptions();
   }
 
   getAdditionalActiveFields(): string[] {
@@ -132,50 +210,26 @@ export default class OdometryController extends TimelineVizController {
   }
 
   getCommand(time: number) {
-    let fields = this.getListFields()[0];
-
-    // Add game options
-    if (this.GAME.children.length == 0 && window.frcData) {
-      window.frcData.field2ds.forEach((game) => {
-        let option = document.createElement("option");
-        option.innerText = game.title;
-        this.GAME.appendChild(option);
-      });
-      if (this.lastOptions) this.options = this.lastOptions;
-    }
+    const distanceConversion = convert(1, this.UNIT_DISTANCE.value, "meters");
+    const rotationConversion = convert(1, this.UNIT_ROTATION.value, "radians");
 
     // Returns the current value for a field
-    let getCurrentValue = (key: string): Pose2d[] => {
-      let logData = window.log.getNumberArray(key, time, time);
-      if (
-        logData &&
-        logData.timestamps[0] <= time &&
-        (logData.values[0].length == 2 || logData.values[0].length % 3 == 0)
-      ) {
-        let poses: Pose2d[] = [];
-        if (logData.values[0].length == 2) {
-          poses.push({
-            translation: [
-              convert(logData.values[0][0], this.UNIT_DISTANCE.value, "meters"),
-              convert(logData.values[0][1], this.UNIT_DISTANCE.value, "meters")
-            ],
-            rotation: 0
-          });
-        } else {
-          for (let i = 0; i < logData.values[0].length; i += 3) {
-            poses.push({
-              translation: [
-                convert(logData.values[0][i], this.UNIT_DISTANCE.value, "meters"),
-                convert(logData.values[0][i + 1], this.UNIT_DISTANCE.value, "meters")
-              ],
-              rotation: convert(logData.values[0][i + 2], this.UNIT_ROTATION.value, "radians")
-            });
-          }
-        }
-        return poses;
+    let getCurrentValue = (key: string, type: LoggableType | string): Pose2d[] => {
+      if (type === LoggableType.NumberArray) {
+        return logReadNumberArrayToPose2dArray(window.log, key, time, distanceConversion, rotationConversion);
+      } else if (type === "Trajectory") {
+        return logReadTrajectoryToPose2dArray(window.log, key, time, distanceConversion);
+      } else if (typeof type === "string" && type.endsWith("[]")) {
+        return type.startsWith("Translation")
+          ? logReadTranslation2dArrayToPose2dArray(window.log, key, time, distanceConversion)
+          : logReadPose2dArray(window.log, key, time, distanceConversion);
       } else {
+        let pose =
+          typeof type === "string" && type.startsWith("Translation")
+            ? logReadTranslation2dToPose2d(window.log, key, time, distanceConversion)
+            : logReadPose2d(window.log, key, time, distanceConversion);
+        return pose === null ? [] : [pose];
       }
-      return [];
     };
 
     // Get data
@@ -184,62 +238,265 @@ export default class OdometryController extends TimelineVizController {
     let ghostData: Pose2d[] = [];
     let trajectoryData: Pose2d[][] = [];
     let visionTargetData: Pose2d[] = [];
+    let heatmapData: Translation2d[] = [];
     let arrowFrontData: Pose2d[] = [];
     let arrowCenterData: Pose2d[] = [];
     let arrowBackData: Pose2d[] = [];
-    fields.forEach((field) => {
+    let zebraMarkerData: { [key: string]: { translation: Translation2d; alliance: string } } = {};
+    let zebraGhostDataTranslations: Translation2d[] = [];
+    let zebraGhostData: Pose2d[] = [];
+    this.getListFields()[0].forEach((field) => {
       switch (field.type) {
         case "Robot":
-          let currentRobotData = getCurrentValue(field.key);
+          let currentRobotData = getCurrentValue(field.key, field.sourceType);
           robotData = robotData.concat(currentRobotData);
 
-          // Get trails
+          // Get timestamps for trail
+          let keys: string[] = [];
+          let arrayLength = 0;
+          if (field.sourceType === LoggableType.NumberArray) {
+            keys = [field.key];
+          } else if (typeof field.sourceType === "string" && field.sourceType.endsWith("[]")) {
+            arrayLength = getOrDefault(window.log, field.key + "/length", LoggableType.Number, time, 0);
+            for (let i = 0; i < arrayLength; i++) {
+              let itemKey = field.key + "/" + i.toString();
+              keys = keys.concat([itemKey + "/translation/x", itemKey + "/translation/y", itemKey + "/rotation/value"]);
+            }
+          } else if (typeof field.sourceType === "string") {
+            keys = [field.key + "/translation/x", field.key + "/translation/y", field.key + "/rotation/value"];
+          }
+          let timestamps = window.log
+            .getTimestamps([field.key], this.UUID)
+            .filter(
+              (x) => x > time - OdometryController.TRAIL_LENGTH_SECS && x < time + OdometryController.TRAIL_LENGTH_SECS
+            );
+
+          // Get trail data
           let trailsTemp: Translation2d[][] = currentRobotData.map(() => []);
-          let trailLogData = window.log.getNumberArray(
-            field.key,
-            time - this.TRAIL_LENGTH_SECS,
-            time + this.TRAIL_LENGTH_SECS
-          );
-          if (trailLogData) {
-            if (time - trailLogData.timestamps[0] > this.TRAIL_LENGTH_SECS) {
-              trailLogData.timestamps.shift();
-              trailLogData.values.shift();
-            }
-            if (trailLogData.timestamps[trailLogData.timestamps.length - 1] - time > this.TRAIL_LENGTH_SECS) {
-              trailLogData.timestamps.pop();
-              trailLogData.values.pop();
-            }
-            trailLogData.values.forEach((value) => {
-              if (value.length % 3 == 0) {
-                for (let i = 0; i < value.length / 3; i += 1) {
-                  if (i >= trailsTemp.length) continue;
-                  trailsTemp[i].push([
-                    convert(value[i * 3], this.UNIT_DISTANCE.value, "meters"),
-                    convert(value[i * 3 + 1], this.UNIT_DISTANCE.value, "meters")
-                  ]);
+          if (field.sourceType === LoggableType.NumberArray) {
+            let data = window.log.getNumberArray(field.key, timestamps[0], timestamps[timestamps.length - 1]);
+            if (data !== undefined) {
+              let dataIndex = 1;
+              timestamps.forEach((timestamp) => {
+                let poses = numberArrayToPose2dArray(
+                  data!.values[dataIndex - 1],
+                  distanceConversion,
+                  rotationConversion
+                );
+                poses.forEach((pose, index) => {
+                  if (index < trailsTemp.length) {
+                    trailsTemp[index].push(pose.translation);
+                  }
+                });
+                while (dataIndex < data!.timestamps.length && data!.timestamps[dataIndex] < timestamp) {
+                  dataIndex++;
                 }
+              });
+            }
+          } else if (typeof field.sourceType === "string") {
+            let addTrail = (key: string, trailIndex = 0) => {
+              if (trailIndex >= trailsTemp.length) {
+                return;
               }
-            });
+              let xData = window.log.getNumber(
+                key + "/translation/x",
+                timestamps[0],
+                timestamps[timestamps.length - 1]
+              );
+              let yData = window.log.getNumber(
+                key + "/translation/y",
+                timestamps[0],
+                timestamps[timestamps.length - 1]
+              );
+              if (xData !== undefined && yData !== undefined) {
+                let xDataIndex = 1;
+                let yDataIndex = 1;
+                timestamps.forEach((timestamp) => {
+                  trailsTemp[trailIndex].push([
+                    xData!.values[xDataIndex - 1] * distanceConversion,
+                    yData!.values[yDataIndex - 1] * distanceConversion
+                  ]);
+                  while (xDataIndex < xData!.timestamps.length && xData!.timestamps[xDataIndex] < timestamp) {
+                    xDataIndex++;
+                  }
+                  while (yDataIndex < yData!.timestamps.length && yData!.timestamps[yDataIndex] < timestamp) {
+                    yDataIndex++;
+                  }
+                });
+              }
+            };
+            if (field.sourceType.endsWith("[]")) {
+              for (let i = 0; i < arrayLength; i++) {
+                addTrail(field.key + "/" + i.toString(), i);
+              }
+            } else {
+              addTrail(field.key);
+            }
           }
           trailData = trailData.concat(trailsTemp);
           break;
         case "Ghost":
-          ghostData = ghostData.concat(getCurrentValue(field.key));
+          if (field.sourceType !== "ZebraTranslation") {
+            ghostData = ghostData.concat(getCurrentValue(field.key, field.sourceType));
+          } else {
+            let x: number | null = null;
+            let y: number | null = null;
+            {
+              let xData = window.log.getNumber(field.key + "/x", time, time);
+              if (xData !== undefined && xData.values.length > 0) {
+                if (xData.values.length === 1) {
+                  x = xData.values[0];
+                } else {
+                  x = scaleValue(time, [xData.timestamps[0], xData.timestamps[1]], [xData.values[0], xData.values[1]]);
+                }
+              }
+            }
+            {
+              let yData = window.log.getNumber(field.key + "/y", time, time);
+              if (yData !== undefined && yData.values.length > 0) {
+                if (yData.values.length === 1) {
+                  y = yData.values[0];
+                } else {
+                  y = scaleValue(time, [yData.timestamps[0], yData.timestamps[1]], [yData.values[0], yData.values[1]]);
+                }
+              }
+            }
+            if (x !== null && y !== null) {
+              zebraGhostDataTranslations.push([convert(x, "feet", "meters"), convert(y, "feet", "meters")]);
+            }
+          }
           break;
         case "Trajectory":
-          trajectoryData.push(getCurrentValue(field.key));
+          trajectoryData.push(getCurrentValue(field.key, field.sourceType));
           break;
         case "Vision Target":
-          visionTargetData = visionTargetData.concat(getCurrentValue(field.key));
+          visionTargetData = visionTargetData.concat(getCurrentValue(field.key, field.sourceType));
+          break;
+        case "Heatmap":
+        case "Heatmap (Enabled)":
+          {
+            // Get enabled data
+            let enabledFilter = field.type === "Heatmap (Enabled)";
+            let enabledData = enabledFilter ? getEnabledData(window.log) : null;
+            let isEnabled = (timestamp: number) => {
+              if (!enabledFilter) return true;
+              if (enabledData === null) return false;
+              let enabledDataIndex = enabledData.timestamps.findLastIndex((x) => x <= timestamp);
+              if (enabledDataIndex === -1) return false;
+              return enabledData.values[enabledDataIndex];
+            };
+
+            // Get timestamps
+            let timestamps: number[] = [];
+            for (
+              let sampleTime = window.log.getTimestampRange()[0];
+              sampleTime < window.log.getTimestampRange()[1];
+              sampleTime += OdometryController.HEATMAP_DT
+            ) {
+              timestamps.push(sampleTime);
+            }
+
+            // Get data
+            if (field.sourceType === LoggableType.NumberArray) {
+              let data = window.log.getNumberArray(field.key, timestamps[0], timestamps[timestamps.length - 1]);
+              if (data !== undefined) {
+                let dataIndex = 1;
+                timestamps.forEach((timestamp) => {
+                  if (!isEnabled(timestamp)) return;
+                  let poses = numberArrayToPose2dArray(
+                    data!.values[dataIndex - 1],
+                    distanceConversion,
+                    rotationConversion
+                  );
+                  poses.forEach((pose, index) => {
+                    heatmapData.push(pose.translation);
+                  });
+                  while (dataIndex < data!.timestamps.length && data!.timestamps[dataIndex] < timestamp) {
+                    dataIndex++;
+                  }
+                });
+              }
+            } else if (typeof field.sourceType === "string") {
+              let addData = (key: string) => {
+                let xData = window.log.getNumber(
+                  key + "/translation/x",
+                  timestamps[0],
+                  timestamps[timestamps.length - 1]
+                );
+                let yData = window.log.getNumber(
+                  key + "/translation/y",
+                  timestamps[0],
+                  timestamps[timestamps.length - 1]
+                );
+                if (xData !== undefined && yData !== undefined) {
+                  let xDataIndex = 1;
+                  let yDataIndex = 1;
+                  timestamps.forEach((timestamp) => {
+                    if (!isEnabled(timestamp)) return;
+                    heatmapData.push([
+                      xData!.values[xDataIndex - 1] * distanceConversion,
+                      yData!.values[yDataIndex - 1] * distanceConversion
+                    ]);
+                    while (xDataIndex < xData!.timestamps.length && xData!.timestamps[xDataIndex] < timestamp) {
+                      xDataIndex++;
+                    }
+                    while (yDataIndex < yData!.timestamps.length && yData!.timestamps[yDataIndex] < timestamp) {
+                      yDataIndex++;
+                    }
+                  });
+                }
+              };
+              if (field.sourceType.endsWith("[]")) {
+                let length = getOrDefault(window.log, field.key + "/length", LoggableType.Number, time, 0);
+                for (let i = 0; i < length; i++) {
+                  addData(field.key + "/" + i.toString());
+                }
+              } else {
+                addData(field.key);
+              }
+            }
+          }
           break;
         case "Arrow (Front)":
-          arrowFrontData = arrowFrontData.concat(getCurrentValue(field.key));
+          arrowFrontData = arrowFrontData.concat(getCurrentValue(field.key, field.sourceType));
           break;
         case "Arrow (Center)":
-          arrowCenterData = arrowCenterData.concat(getCurrentValue(field.key));
+          arrowCenterData = arrowCenterData.concat(getCurrentValue(field.key, field.sourceType));
           break;
         case "Arrow (Back)":
-          arrowBackData = arrowBackData.concat(getCurrentValue(field.key));
+          arrowBackData = arrowBackData.concat(getCurrentValue(field.key, field.sourceType));
+          break;
+        case "Zebra Marker":
+          let team = field.key.split("FRC")[1];
+          let x: number | null = null;
+          let y: number | null = null;
+          {
+            let xData = window.log.getNumber(field.key + "/x", time, time);
+            if (xData !== undefined && xData.values.length > 0) {
+              if (xData.values.length === 1) {
+                x = xData.values[0];
+              } else {
+                x = scaleValue(time, [xData.timestamps[0], xData.timestamps[1]], [xData.values[0], xData.values[1]]);
+              }
+            }
+          }
+          {
+            let yData = window.log.getNumber(field.key + "/y", time, time);
+            if (yData !== undefined && yData.values.length > 0) {
+              if (yData.values.length === 1) {
+                y = yData.values[0];
+              } else {
+                y = scaleValue(time, [yData.timestamps[0], yData.timestamps[1]], [yData.values[0], yData.values[1]]);
+              }
+            }
+          }
+          let alliance = getOrDefault(window.log, field.key + "/alliance", LoggableType.String, Infinity, "blue");
+          if (x !== null && y !== null) {
+            zebraMarkerData[team] = {
+              translation: [convert(x, "feet", "meters"), convert(y, "feet", "meters")],
+              alliance: alliance
+            };
+          }
           break;
       }
     });
@@ -247,7 +504,7 @@ export default class OdometryController extends TimelineVizController {
     // Get alliance colors
     let allianceRedBumpers = false;
     let allianceRedOrigin = false;
-    let autoRedAlliance = getIsRedAlliance(window.log);
+    let autoRedAlliance = getIsRedAlliance(window.log, time);
     switch (this.ALLIANCE_BUMPERS.value) {
       case "auto":
         allianceRedBumpers = autoRedAlliance;
@@ -271,6 +528,22 @@ export default class OdometryController extends TimelineVizController {
         break;
     }
 
+    // Apply robot rotation to Zebra ghost translations
+    let robotRotation = 0;
+    if (robotData.length > 0) {
+      robotRotation = robotData[0].rotation;
+      if (!allianceRedOrigin) {
+        // Switch from blue to red origin to match translation
+        robotRotation += Math.PI;
+      }
+    }
+    zebraGhostDataTranslations.forEach((translation) => {
+      zebraGhostData.push({
+        translation: translation,
+        rotation: robotRotation
+      });
+    });
+
     // Package command data
     return {
       poses: {
@@ -279,9 +552,12 @@ export default class OdometryController extends TimelineVizController {
         ghost: ghostData,
         trajectory: trajectoryData,
         visionTarget: visionTargetData,
+        heatmap: heatmapData,
         arrowFront: arrowFrontData,
         arrowCenter: arrowCenterData,
-        arrowBack: arrowBackData
+        arrowBack: arrowBackData,
+        zebraMarker: zebraMarkerData,
+        zebraGhost: zebraGhostData
       },
       options: this.options,
       allianceRedBumpers: allianceRedBumpers,
