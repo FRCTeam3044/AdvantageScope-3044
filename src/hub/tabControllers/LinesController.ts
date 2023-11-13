@@ -84,13 +84,13 @@ export default class LinesController extends TimelineVizController {
 
     // Bind source link
     this.GAME.addEventListener("change", () => {
-      let config = window.frcData?.field2ds.find((game) => game.title == this.GAME.value);
-      this.GAME_SOURCE_LINK.hidden = config != undefined && config.sourceUrl == undefined;
+      let config = window.assets?.field2ds.find((game) => game.name === this.GAME.value);
+      this.GAME_SOURCE_LINK.hidden = config !== undefined && config.sourceUrl === undefined;
     });
     this.GAME_SOURCE_LINK.addEventListener("click", () => {
       window.sendMainMessage(
         "open-link",
-        window.frcData?.field2ds.find((game) => game.title == this.GAME.value)?.sourceUrl
+        window.assets?.field2ds.find((game) => game.name === this.GAME.value)?.sourceUrl
       );
     });
 
@@ -104,6 +104,34 @@ export default class LinesController extends TimelineVizController {
     this.POINT_SIZE.addEventListener("change", () => {
       if (Number(this.POINT_SIZE.value) <= 0) this.POINT_SIZE.value = "0.01";
     });
+  }
+
+  /** Clears all options from the game selector then updates it with the latest options. */
+  private resetGameOptions() {
+    let value = this.GAME.value;
+    while (this.GAME.firstChild) {
+      this.GAME.removeChild(this.GAME.firstChild);
+    }
+    let options: string[] = [];
+    if (window.assets !== null) {
+      options = window.assets.field2ds.map((game) => game.name);
+      options.forEach((title) => {
+        let option = document.createElement("option");
+        option.innerText = title;
+        this.GAME.appendChild(option);
+      });
+    }
+    if (options.includes(value)) {
+      this.GAME.value = value;
+    } else {
+      this.GAME.value = options[0];
+    }
+    this.updateGameSourceLink();
+  }
+
+  private updateGameSourceLink() {
+    let fieldConfig = window.assets?.field2ds.find((game) => game.name === this.GAME.value);
+    this.GAME_SOURCE_LINK.hidden = fieldConfig !== undefined && fieldConfig.sourceUrl === undefined;
   }
 
   get options(): { [id: string]: any } {
@@ -129,10 +157,11 @@ export default class LinesController extends TimelineVizController {
     this.POINT_SIZE.value = options.pointSize;
     this.POINT_SIZE_TEXT.innerText = options.unitDistance;
     this.lastUnitDistance = options.unitDistance;
+    this.updateGameSourceLink();
+  }
 
-    // Set whether source link is hidden
-    let fieldConfig = window.frcData?.field2ds.find((game) => game.title == this.GAME.value);
-    this.GAME_SOURCE_LINK.hidden = fieldConfig != undefined && fieldConfig.sourceUrl == undefined;
+  newAssets() {
+    this.resetGameOptions();
   }
 
   getAdditionalActiveFields(): string[] {
@@ -141,16 +170,6 @@ export default class LinesController extends TimelineVizController {
 
   getCommand(time: number) {
     let fields = this.getListFields()[0];
-
-    // Add game options
-    if (this.GAME.children.length == 0 && window.frcData) {
-      window.frcData.field2ds.forEach((game) => {
-        let option = document.createElement("option");
-        option.innerText = game.title;
-        this.GAME.appendChild(option);
-      });
-      if (this.lastOptions) this.options = this.lastOptions;
-    }
 
     // Returns the current value for a field
     let getCurrentValue = (key: string): Pose2d[] => {

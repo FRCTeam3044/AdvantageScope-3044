@@ -30,9 +30,9 @@ export default class LinesVisualizer implements Visualizer {
     context.clearRect(0, 0, width, height);
 
     // Get game data and update image element
-    let gameData = window.frcData?.field2ds.find((game) => game.title == command.options.game);
+    let gameData = window.assets?.field2ds.find((game) => game.name === command.options.game);
     if (!gameData) return null;
-    if (gameData.path != this.lastImageSource) {
+    if (gameData.path !== this.lastImageSource) {
       this.lastImageSource = gameData.path;
       this.IMAGE.src = gameData.path;
     }
