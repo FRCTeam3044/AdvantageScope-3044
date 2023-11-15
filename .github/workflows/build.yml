@@ -36,15 +36,6 @@ jobs:
         with:
           name: bundles
           path: bundles/*.js
-      - name: Compile bundles (WPILib)
-        run: npm run compile
-        env:
-          ASCOPE_DISTRIBUTOR: WPILIB
-      - name: Upload bundles (WPILib)
-        uses: actions/upload-artifact@v3
-        with:
-          name: bundles-wpilib
-          path: bundles/*.js
 
   build-win:
     name: Build for Windows (${{ matrix.arch }})
