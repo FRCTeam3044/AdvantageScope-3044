@@ -8,7 +8,6 @@ import cleanup from "rollup-plugin-cleanup";
 import replaceRegEx from "rollup-plugin-re";
 
 function bundle(input, output, isMain, external = []) {
-  const isWpilib = process.env.ASCOPE_DISTRIBUTOR === "WPILIB";
   return {
     input: "src/" + input,
     output: {
@@ -26,7 +25,7 @@ function bundle(input, output, isMain, external = []) {
       replace({
         preventAssignment: true,
         values: {
-          __distributor__: isWpilib ? "WPILib" : "FRC6328",
+          __distributor__: "FRC3044",
           __build_date__: new Date().toLocaleString("en-US", {
             timeZone: "UTC",
             hour12: false,
