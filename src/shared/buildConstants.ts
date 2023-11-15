@@ -1,5 +1,6 @@
 export enum Distributor {
-  FRC3044
+  FRC3044,
+  WPILib
 }
 
 // @ts-ignore

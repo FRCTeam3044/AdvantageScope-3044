@@ -1348,7 +1348,7 @@ function setupMenu() {
             openPreferences(window);
           }
         },
-        ...(DISTRIBUTOR === Distributor.FRC6328
+        ...(DISTRIBUTOR === Distributor.FRC3044
           ? [
               {
                 label: "Check for Updates...",
@@ -1393,7 +1393,7 @@ function setupMenu() {
           openPreferences(window);
         }
       },
-      ...(DISTRIBUTOR === Distributor.FRC6328
+      ...(DISTRIBUTOR === Distributor.FRC3044
         ? [
             {
               label: "Check for Updates...",
@@ -2206,7 +2206,7 @@ app.whenReady().then(() => {
   });
 
   // Check for update and show button on hub windows (but don't prompt)
-  if (DISTRIBUTOR === Distributor.FRC6328) {
+  if (DISTRIBUTOR === Distributor.FRC3044) {
     checkForUpdate(false);
   }
 });
