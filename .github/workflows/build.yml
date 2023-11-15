@@ -242,7 +242,6 @@ jobs:
           asset_name: advantagescope-linux-${{ matrix.arch.electronArch }}-${{ steps.get_release_info.outputs.tag_name }}.${{ matrix.format }}
           asset_content_type: "application/octet-stream"
 
-
   finalize-release:
     name: Finalize Release
     needs: [build-win, build-mac, build-linux]
