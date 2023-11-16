@@ -1,6 +1,5 @@
-import { Pose2d, Translation2d } from "../../shared/geometry";
+import { Pose2d } from "../../shared/geometry";
 import LoggableType from "../../shared/log/LoggableType";
-import { ALLIANCE_KEYS, getIsRedAlliance } from "../../shared/log/LogUtil";
 import TabType from "../../shared/TabType";
 import { convert } from "../../shared/units";
 import LinesVisualizer from "../../shared/visualizers/LinesVisualizer";
@@ -48,6 +47,8 @@ export default class LinesController extends TimelineVizController {
     this.TRAJECTORY_THICKNESS_TEXT = configBody.children[2].lastElementChild?.lastElementChild as HTMLElement;
     this.POINT_SIZE = configBody.children[3].lastElementChild?.children[1] as HTMLInputElement;
     this.POINT_SIZE_TEXT = configBody.children[3].lastElementChild?.lastElementChild as HTMLElement;
+
+    this.resetGameOptions();
 
     // Unit conversion for distance
     this.UNIT_DISTANCE.addEventListener("change", () => {
@@ -146,6 +147,7 @@ export default class LinesController extends TimelineVizController {
   }
 
   set options(options: { [id: string]: any }) {
+    this.resetGameOptions();
     this.lastOptions = options;
     this.GAME.value = options.game;
     this.UNIT_DISTANCE.value = options.unitDistance;
