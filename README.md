@@ -1,5 +1,7 @@
 # ![AdvantageScope-3044](/banner.png)
 
+[![Build](https://github.com/FRCTeam3044/AdvantageScope-3044/actions/workflows/build.yml/badge.svg)](https://github.com/FRCTeam3044/AdvantageScope-3044/actions/workflows/build.yml)
+
 AdvantageScope-3044 is a fork of [AdvantageScope](https://github.com/Mechanical-Advantage/AdvantageScope) designed for use with [OxConfig](https://github.com/FRCTeam3044/OxConfig) to allow for realtime editng/tuning of values.
 
 For current users of AdvantageScope looking to switch for OxConfig, AdvantageScope-3044 will try to stay as up-to-date as possible with the latest AdvantageScope features. It is currently a drop-in replacement, **and will install over vanilla AdvantageScope** (it should save preferences, but install at your own risk) just adding the additional features. View the [online documentation](https://github.com/FRCTeam3044/AdvantageScope-3044/blob/main/docs/INDEX.md) which contains docs for the Tuner and Config editor, or find it in app.
