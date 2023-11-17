@@ -2354,3 +2354,6 @@ td input::-webkit-inner-spin-button {
 .deploy-path-cfg {
   width: calc(100% - 170px);
 }
+.coprocessor-card-template {
+  display: none !important;
+}

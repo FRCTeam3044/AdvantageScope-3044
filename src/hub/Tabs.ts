@@ -20,6 +20,7 @@ import TimelineVizController from "./tabControllers/TimelineVizController";
 import VideoController from "./tabControllers/VideoController";
 import TunerController from "./tabControllers/TunerController";
 import ConfigEditorController from "./tabControllers/ConfigEditorController";
+import CoprocessorsController from "./tabControllers/CoprocessorsController";
 
 export default class Tabs {
   private VIEWER = document.getElementsByClassName("viewer")[0] as HTMLElement;
@@ -268,6 +269,11 @@ export default class Tabs {
         contentElement.appendChild(this.CONTENT_TEMPLATES.children[16].cloneNode(true));
         controller = new LinesController(contentElement);
         break;
+      case TabType.Coprocessors:
+        contentElement = this.CONTENT_TEMPLATES.children[17].cloneNode(true) as HTMLElement;
+        controller = new CoprocessorsController(contentElement);
+        break;
+        
     }
 
     // Create title element
