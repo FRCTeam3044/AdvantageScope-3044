@@ -14,7 +14,8 @@ enum TabType {
   Metadata,
   Tuner,
   ConfigEditor,
-  Lines
+  Lines,
+  Coprocessors
 }
 
 export default TabType;
@@ -68,6 +69,8 @@ export function getDefaultTabTitle(type: TabType): string {
       return "Config Editor";
     case TabType.Lines:
       return "Lines";
+    case TabType.Coprocessors:
+      return "Coprocessors";
     default:
       return "";
   }
@@ -107,6 +110,8 @@ export function getTabIcon(type: TabType): string {
       return "🛠️";
     case TabType.Lines:
       return "📏";
+    case TabType.Coprocessors:
+      return "🌐";
     default:
       return "";
   }
