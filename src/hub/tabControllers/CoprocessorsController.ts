@@ -25,7 +25,5 @@ export default class CoprocessorsController implements TabController {
     return [];
   }
 
-  periodic() {
-
-  }
+  periodic() {}
 }
