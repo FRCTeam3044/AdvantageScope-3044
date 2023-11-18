@@ -2262,3 +2262,98 @@ td input::-webkit-inner-spin-button {
 .coprocessor-card-template {
   display: none !important;
 }
+
+.coprocessor-card {
+  width: 400px;
+  height: 200px;
+  margin: 20px;
+  display: flex;
+  flex-direction: column;
+  border: 3px solid #222;
+  box-shadow: 5px 5px 5px 2px #00000060;
+}
+.coprocessor-card-content {
+  padding: 0 10px;
+  flex-grow: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  align-content: center;
+}
+
+.coprocessor-ip,
+.coprocessor-pv-link-container {
+  text-align: right;
+  margin: 0;
+}
+.coprocessor-name,
+.coprocessor-pv-cam {
+  margin: 0;
+}
+
+.coprocessor-info {
+  flex: 50%;
+}
+
+.coprocessor-card-header {
+  width: calc(100% - 20px);
+  border-bottom: 1px solid #222;
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+p.coprocessor-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.coprocessor-stat {
+  flex-grow: 1;
+  text-align: right;
+  font-family: "Roboto Mono", monospace;
+  background-color: #ddd;
+  border-radius: 2px;
+  padding: 8px 10px;
+  margin: 0 5px;
+}
+
+.coprocessor-pv-link {
+  cursor: pointer;
+  color: blue;
+  text-decoration: underline;
+  background: none !important;
+  border: none;
+  padding: 0 !important;
+  font: inherit;
+}
+
+.cp-disconnected {
+  background-color: #f55;
+}
+
+.coprocessors-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-evenly;
+}
+
+.disconnected-tab {
+  background-color: #c11 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cp-disconnected {
+    background-color: #422;
+  }
+
+  .coprocessor-card-header,
+  .coprocessor-card {
+    border-color: #fff;
+  }
+
+  .coprocessor-stat {
+    background-color: #333;
+  }
+}
