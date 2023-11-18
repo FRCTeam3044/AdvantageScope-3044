@@ -273,7 +273,6 @@ export default class Tabs {
         contentElement = this.CONTENT_TEMPLATES.children[17].cloneNode(true) as HTMLElement;
         controller = new CoprocessorsController(contentElement);
         break;
-        
     }
 
     // Create title element
