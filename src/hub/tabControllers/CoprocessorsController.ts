@@ -7,13 +7,17 @@ import TabController from "../TabController";
 export default class CoprocessorsController implements TabController {
   private CONTAINER: HTMLElement;
   private CARD_TEMPLATE: HTMLTemplateElement;
+  private NO_COPROCESSOR_TEXT: HTMLElement;
 
   private coprocessorCards: HTMLElement[] = [];
   private coprocessors: string[] = [];
 
+  private unkownsExist: boolean = false;
+
   constructor(content: HTMLElement) {
     this.CONTAINER = content.getElementsByClassName("coprocessors-container")[0] as HTMLElement;
     this.CARD_TEMPLATE = content.firstElementChild as HTMLTemplateElement;
+    this.NO_COPROCESSOR_TEXT = content.getElementsByClassName("no-coprocessor-text")[0] as HTMLElement;
   }
 
   saveState(): TabState {
@@ -34,17 +38,21 @@ export default class CoprocessorsController implements TabController {
     // and so we need to wait for the next refresh to get the values, but by then we've
     // already created the cards so this code doesn't run
 
-    //if (this.coprocessors.length != this.coprocessorCards.length) {
-    for (let card of this.coprocessorCards) {
-      card.remove();
+    if (this.coprocessors.length != this.coprocessorCards.length || this.unkownsExist) {
+      this.unkownsExist = false;
+      for (let card of this.coprocessorCards) {
+        card.remove();
+      }
+      this.coprocessorCards = [];
+      this.coprocessors.forEach((ip) => {
+        let name = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Name`, LoggableType.String, Infinity, "Unknown");
+        let pvcam = getOrDefault(window.log, `NT:/Coprocessors/${ip}/PVCam`, LoggableType.String, Infinity, "Unknown");
+        if (name == "Unknown" || pvcam == "Unknown") {
+          this.unkownsExist = true;
+        }
+        this.createCard(name, ip, pvcam);
+      });
     }
-    this.coprocessorCards = [];
-    this.coprocessors.forEach((ip) => {
-      let name = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Name`, LoggableType.String, Infinity, "Unknown");
-      let pvcam = getOrDefault(window.log, `NT:/Coprocessors/${ip}/PVCam`, LoggableType.String, Infinity, "Unknown");
-      this.createCard(name, ip, pvcam);
-    });
-    //}
   }
 
   newAssets() {}
@@ -53,7 +61,18 @@ export default class CoprocessorsController implements TabController {
     return ["NT:/Coprocessors"];
   }
 
-  periodic() {}
+  periodic() {
+    if (this.coprocessorCards.length == 0) {
+      this.NO_COPROCESSOR_TEXT.style.display = "block";
+      if (window.isConnected()) {
+        this.NO_COPROCESSOR_TEXT.children[1].textContent = "No coprocessors found on the network.";
+      } else {
+        this.NO_COPROCESSOR_TEXT.children[1].textContent = "You are not connected to the robot.";
+      }
+    } else {
+      this.NO_COPROCESSOR_TEXT.style.display = "none";
+    }
+  }
 
   private createCard(name: string, ip: string, pvcam: string) {
     let card = this.CARD_TEMPLATE.cloneNode(true) as HTMLElement;
