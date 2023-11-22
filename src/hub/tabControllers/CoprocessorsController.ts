@@ -66,7 +66,6 @@ export default class CoprocessorsController implements TabController {
       card.getElementsByClassName("coprocessor-cpu")[0].textContent = cpu;
       card.getElementsByClassName("coprocessor-ram")[0].textContent = ram;
       card.getElementsByClassName("coprocessor-disk")[0].textContent = disk;
-      let heartbeat = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Heartbeat`, LoggableType.Number, Infinity, 0);
     }
   }
 
