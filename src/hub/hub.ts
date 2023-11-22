@@ -114,6 +114,28 @@ function updateFancyWindow() {
   }
 }
 
+window.setNt4 = (topic: string, value: any) => {
+  if (liveSource instanceof NT4Source) {
+    liveSource.publishValue(topic, value);
+  }
+};
+
+// Check if connected via NT4
+window.isConnected = () => {
+  if (!(liveSource instanceof NT4Source)) return false;
+  return (liveSource as NT4Source).isConnected();
+};
+
+// Write config to deploy dir
+window.writeOxConfig = (deployDir: string, timestamp: string, config: string) => {
+  if (timestamp == oldOxConfigTimestamp) return;
+  oldOxConfigTimestamp = timestamp;
+  window.sendMainMessage("write-oxconfig", {
+    deployDir,
+    config
+  });
+};
+
 // MANAGE STATE
 
 /** Returns the current state. */
