@@ -1,23 +1,19 @@
 import { TabState } from "../../shared/HubState";
 import TabType, { getTabIcon } from "../../shared/TabType";
+import { filterFieldByPrefixes, getOrDefault } from "../../shared/log/LogUtil";
+import LoggableType from "../../shared/log/LoggableType";
 import TabController from "../TabController";
 
 export default class CoprocessorsController implements TabController {
   private CONTAINER: HTMLElement;
   private CARD_TEMPLATE: HTMLTemplateElement;
 
-  private coprocessors: HTMLElement[] = [];
+  private coprocessorCards: HTMLElement[] = [];
+  private coprocessors: string[] = [];
 
   constructor(content: HTMLElement) {
     this.CONTAINER = content.getElementsByClassName("coprocessors-container")[0] as HTMLElement;
     this.CARD_TEMPLATE = content.firstElementChild as HTMLTemplateElement;
-
-    this.createCard("Coprocessor 1", "127.0.0.1", "pvcam1");
-    this.createCard("Coprocessor 2", "127.0.0.1", "pvcam2");
-    this.createCard("Coprocessor 3", "127.0.0.1", "pvcam3");
-    this.createCard("Coprocessor 4", "127.0.0.1", "pvcam4");
-    this.createCard("Coprocessor 5", "127.0.0.1", "pvcam5");
-    this.createCard("Coprocessor 6", "127.0.0.1", "pvcam6");
   }
 
   saveState(): TabState {
@@ -28,12 +24,33 @@ export default class CoprocessorsController implements TabController {
 
   restoreState(state: TabState) {}
 
-  refresh() {}
+  refresh() {
+    let processorsFields = filterFieldByPrefixes(window.log.getFieldKeys(), "/Coprocessors", false, true);
+    this.coprocessors = processorsFields.map((field) => field.split("/")[2]);
+    this.coprocessors = this.coprocessors.filter((ip, index) => this.coprocessors.indexOf(ip) == index);
+
+    // This is commented out because it causes the name and pvcam to be unknown
+    // I suspect this is because on first refresh, the values are not available to us
+    // and so we need to wait for the next refresh to get the values, but by then we've
+    // already created the cards so this code doesn't run
+
+    //if (this.coprocessors.length != this.coprocessorCards.length) {
+    for (let card of this.coprocessorCards) {
+      card.remove();
+    }
+    this.coprocessorCards = [];
+    this.coprocessors.forEach((ip) => {
+      let name = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Name`, LoggableType.String, Infinity, "Unknown");
+      let pvcam = getOrDefault(window.log, `NT:/Coprocessors/${ip}/PVCam`, LoggableType.String, Infinity, "Unknown");
+      this.createCard(name, ip, pvcam);
+    });
+    //}
+  }
 
   newAssets() {}
 
   getActiveFields(): string[] {
-    return [];
+    return ["NT:/Coprocessors"];
   }
 
   periodic() {}
@@ -47,7 +64,7 @@ export default class CoprocessorsController implements TabController {
     card
       .getElementsByClassName("coprocessor-pv-link")[0]
       .addEventListener("click", () => window.sendMainMessage("open-link", `http://${ip}:5800`));
-    this.coprocessors.push(card);
+    this.coprocessorCards.push(card);
     this.CONTAINER.appendChild(card);
   }
 
@@ -62,4 +79,10 @@ export default class CoprocessorsController implements TabController {
       }
     });
   }
+}
+
+interface Coprocessor {
+  name: string;
+  ip: string;
+  pvcam: string;
 }
