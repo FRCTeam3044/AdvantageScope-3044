@@ -10,9 +10,12 @@ export default class CoprocessorsController implements TabController {
   private NO_COPROCESSOR_TEXT: HTMLElement;
 
   private coprocessorCards: HTMLElement[] = [];
+  private lastCoprocessorHeartbeats: number[] = [];
   private coprocessors: string[] = [];
 
   private unkownsExist: boolean = false;
+
+  private checkHeartbeatsInterval: number = 0;
 
   constructor(content: HTMLElement) {
     this.CONTAINER = content.getElementsByClassName("coprocessors-container")[0] as HTMLElement;
@@ -33,11 +36,6 @@ export default class CoprocessorsController implements TabController {
     this.coprocessors = processorsFields.map((field) => field.split("/")[2]);
     this.coprocessors = this.coprocessors.filter((ip, index) => this.coprocessors.indexOf(ip) == index);
 
-    // This is commented out because it causes the name and pvcam to be unknown
-    // I suspect this is because on first refresh, the values are not available to us
-    // and so we need to wait for the next refresh to get the values, but by then we've
-    // already created the cards so this code doesn't run
-
     if (this.coprocessors.length != this.coprocessorCards.length || this.unkownsExist) {
       this.unkownsExist = false;
       for (let card of this.coprocessorCards) {
@@ -51,7 +49,24 @@ export default class CoprocessorsController implements TabController {
           this.unkownsExist = true;
         }
         this.createCard(name, ip, pvcam);
+        this.lastCoprocessorHeartbeats.push(0);
       });
+      clearInterval(this.checkHeartbeatsInterval);
+      this.checkHeartbeatsInterval = window.setInterval(() => this.checkHeartbeats(), 500);
+    }
+
+    for (let cardIndex in this.coprocessorCards) {
+      let card = this.coprocessorCards[cardIndex];
+      let ip = card.getElementsByClassName("coprocessor-ip")[0].textContent;
+      let temp = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Temp`, LoggableType.Number, Infinity, "--");
+      let cpu = getOrDefault(window.log, `NT:/Coprocessors/${ip}/CPU`, LoggableType.Number, Infinity, "--");
+      let ram = getOrDefault(window.log, `NT:/Coprocessors/${ip}/RAM`, LoggableType.Number, Infinity, "--");
+      let disk = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Disk`, LoggableType.Number, Infinity, "--");
+      card.getElementsByClassName("coprocessor-temp")[0].textContent = temp;
+      card.getElementsByClassName("coprocessor-cpu")[0].textContent = cpu;
+      card.getElementsByClassName("coprocessor-ram")[0].textContent = ram;
+      card.getElementsByClassName("coprocessor-disk")[0].textContent = disk;
+      let heartbeat = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Heartbeat`, LoggableType.Number, Infinity, 0);
     }
   }
 
@@ -97,6 +112,23 @@ export default class CoprocessorsController implements TabController {
         tab.classList.remove("disconnected-tab");
       }
     });
+  }
+
+  private checkHeartbeats() {
+    let disconnected = false;
+    for (let cardIndex in this.coprocessorCards) {
+      let card = this.coprocessorCards[cardIndex];
+      let ip = card.getElementsByClassName("coprocessor-ip")[0].textContent;
+      let heartbeat = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Heartbeat`, LoggableType.Number, Infinity, 0);
+      if (heartbeat == this.lastCoprocessorHeartbeats[cardIndex]) {
+        disconnected = true;
+        card.classList.add("cp-disconnected");
+      } else {
+        card.classList.remove("cp-disconnected");
+      }
+      this.lastCoprocessorHeartbeats[cardIndex] = heartbeat;
+    }
+    this.changeTabColor(disconnected);
   }
 }
 

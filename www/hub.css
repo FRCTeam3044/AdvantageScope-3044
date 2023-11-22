@@ -2293,7 +2293,8 @@ td input::-webkit-inner-spin-button {
 }
 
 .coprocessor-info {
-  flex: 50%;
+  flex: 50% 0 0;
+  max-width: 50%;
 }
 
 .coprocessor-card-header {
@@ -2310,13 +2311,16 @@ p.coprocessor-info {
   align-items: center;
 }
 .coprocessor-stat {
-  flex-grow: 1;
+  flex: 1 1;
   text-align: right;
   font-family: "Roboto Mono", monospace;
   background-color: #ddd;
   border-radius: 2px;
   padding: 8px 10px;
   margin: 0 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .coprocessor-pv-link {
