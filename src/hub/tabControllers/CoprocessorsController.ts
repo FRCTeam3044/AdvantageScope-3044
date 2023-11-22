@@ -120,7 +120,7 @@ export default class CoprocessorsController implements TabController {
       let card = this.coprocessorCards[cardIndex];
       let ip = card.getElementsByClassName("coprocessor-ip")[0].textContent;
       let heartbeat = getOrDefault(window.log, `NT:/Coprocessors/${ip}/Heartbeat`, LoggableType.Number, Infinity, 0);
-      if (heartbeat == this.lastCoprocessorHeartbeats[cardIndex]) {
+      if (heartbeat <= this.lastCoprocessorHeartbeats[cardIndex]) {
         disconnected = true;
         card.classList.add("cp-disconnected");
       } else {
