@@ -6,16 +6,22 @@ import Log from "./Log";
 import LogFieldTree from "./LogFieldTree";
 import LoggableType from "./LoggableType";
 import { LogValueSetBoolean } from "./LogValueSets";
-import { MERGE_MAX_FILES, MERGE_PREFIX } from "./MergeConstants";
 
 export const TYPE_KEY = ".type";
+export const STRUCT_PREFIX = "struct:";
+export const PROTO_PREFIX = "proto:";
+export const MAX_SEARCH_RESULTS = 128;
+export const MERGE_PREFIX = "Log";
+export const MERGE_MAX_FILES = 10;
+export const SEPARATOR_REGEX = new RegExp(/\/|:|_/);
 export const ENABLED_KEYS = withMergedKeys([
   "/DriverStation/Enabled",
   "NT:/AdvantageKit/DriverStation/Enabled",
   "DS:enabled",
   "NT:/FMSInfo/FMSControlData",
-  "/DSLog/Status/DSDisabled"
-]);
+  "/DSLog/Status/DSDisabled",
+  "Phoenix6/.+/DeviceEnable"
+]).map((key) => new RegExp(key));
 export const ALLIANCE_KEYS = withMergedKeys([
   "/DriverStation/AllianceStation",
   "NT:/AdvantageKit/DriverStation/AllianceStation",
@@ -52,15 +58,14 @@ export const MATCH_NUMBER_KEYS = withMergedKeys([
   "NT:/AdvantageKit/DriverStation/MatchNumber",
   "NT:/FMSInfo/MatchNumber"
 ]);
-export const MAX_SEARCH_RESULTS = 128;
 
-/** Returns a set of keys starting  */
+/** Returns a set of keys starting with the merged log prefixes. */
 function withMergedKeys(keys: string[]): string[] {
   let output: string[] = [];
   keys.forEach((key) => {
     output.push(key);
     for (let i = 0; i < MERGE_MAX_FILES; i++) {
-      output.push("/" + MERGE_PREFIX + i.toString() + key);
+      output.push("/" + MERGE_PREFIX + i.toString() + (key.startsWith("/") ? "" : "/") + key);
     }
   });
   return output;
@@ -116,10 +121,10 @@ export function filterFieldByPrefixes(
 ) {
   let filteredFields: Set<string> = new Set();
   prefixes.split(",").forEach((prefix) => {
-    let prefixSeries = prefix.split(new RegExp(/\/|:/)).filter((item) => item.length > 0);
+    let prefixSeries = prefix.split(SEPARATOR_REGEX).filter((item) => item.length > 0);
     if (ntOnly) prefixSeries.splice(0, 0, "NT");
     fields.forEach((field) => {
-      let fieldSeries = field.split(new RegExp(/\/|:/)).filter((item) => item.length > 0);
+      let fieldSeries = field.split(SEPARATOR_REGEX).filter((item) => item.length > 0);
       if (fieldSeries.length < prefixSeries.length) return;
       if (
         prefixSeries.every((prefix, index) => fieldSeries[index].toLowerCase() === prefix.toLowerCase()) ||
@@ -132,8 +137,22 @@ export function filterFieldByPrefixes(
   return [...filteredFields];
 }
 
+export function getEnabledKey(log: Log): string | undefined {
+  let logKeys = log.getFieldKeys();
+  for (let logKeyIndex = 0; logKeyIndex < logKeys.length; logKeyIndex++) {
+    let logKey = logKeys[logKeyIndex];
+    for (let enabledKeyIndex = 0; enabledKeyIndex < ENABLED_KEYS.length; enabledKeyIndex++) {
+      let enabledKey = ENABLED_KEYS[enabledKeyIndex];
+      if (enabledKey.test(logKey)) {
+        return logKey;
+      }
+    }
+  }
+  return undefined;
+}
+
 export function getEnabledData(log: Log): LogValueSetBoolean | null {
-  let enabledKey = ENABLED_KEYS.find((key) => log.getFieldKeys().includes(key));
+  let enabledKey = getEnabledKey(log);
   if (!enabledKey) return null;
   let enabledData: LogValueSetBoolean | null = null;
   if (enabledKey.endsWith("FMSControlData")) {
@@ -142,6 +161,14 @@ export function getEnabledData(log: Log): LogValueSetBoolean | null {
       enabledData = {
         timestamps: tempEnabledData.timestamps,
         values: tempEnabledData.values.map((controlWord) => controlWord % 2 === 1)
+      };
+    }
+  } else if (enabledKey.endsWith("DeviceEnable")) {
+    let tempEnabledData = log.getString(enabledKey, -Infinity, Infinity);
+    if (tempEnabledData) {
+      enabledData = {
+        timestamps: tempEnabledData.timestamps,
+        values: tempEnabledData.values.map((state) => state === "Enabled")
       };
     }
   } else {

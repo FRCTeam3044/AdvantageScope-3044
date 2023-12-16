@@ -3,7 +3,7 @@ import { Pose2d, Translation2d } from "../geometry";
 import { arraysEqual, checkArrayType } from "../util";
 import LogField from "./LogField";
 import LogFieldTree from "./LogFieldTree";
-import { TYPE_KEY, getEnabledData } from "./LogUtil";
+import { MERGE_PREFIX, SEPARATOR_REGEX, STRUCT_PREFIX, TYPE_KEY, getEnabledData } from "./LogUtil";
 import {
   LogValueSetAny,
   LogValueSetBoolean,
@@ -15,7 +15,6 @@ import {
   LogValueSetStringArray
 } from "./LogValueSets";
 import LoggableType from "./LoggableType";
-import { MERGE_PREFIX } from "./MergeConstants";
 import ProtoDecoder from "./ProtoDecoder";
 import StructDecoder from "./StructDecoder";
 
@@ -132,7 +131,7 @@ export default class Log {
   }
 
   /** Sets the structured type string for a field. */
-  setStructuredType(key: string, type: string) {
+  setStructuredType(key: string, type: string | null) {
     if (key in this.fields) {
       this.fields[key].structuredType = type;
     }
@@ -231,7 +230,7 @@ export default class Log {
       key = key.slice(prefix.length);
       key
         .slice(key.startsWith("/") ? 1 : 0)
-        .split(new RegExp(/\/|:/))
+        .split(SEPARATOR_REGEX)
         .forEach((table) => {
           if (table === "") return;
           if (!(table in position.children)) {
@@ -312,8 +311,8 @@ export default class Log {
     }
 
     // Check for struct schema
-    if (key.includes("/.schema/struct:")) {
-      this.structDecoder.addSchema(key.split("struct:")[1], value);
+    if (key.includes("/.schema/" + STRUCT_PREFIX)) {
+      this.structDecoder.addSchema(key.split(STRUCT_PREFIX)[1], value);
       this.attemptQueuedStructures();
     }
   }

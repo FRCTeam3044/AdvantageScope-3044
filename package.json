@@ -1,7 +1,7 @@
 {
   "name": "advantagescope-3044",
   "productName": "AdvantageScope-3044",
-  "version": "3.1.0-beta-4",
+  "version": "3.1.0-beta-5",
   "description": "Robot telemetry application for FRC with extra features for oxconfig (Fork of FRC Team 6328 MechanicalAdvantage's AdvantageScope)",
   "author": {
     "name": "nab138 FRC 3044",
@@ -21,7 +21,7 @@
     "format": "prettier --write .",
     "check-format": "prettier --check .",
     "test-ytdl": "node testYtdl.mjs",
-    "postinstall": "node getLicenses.mjs && node ffmpegDownload.mjs"
+    "postinstall": "node getLicenses.mjs && node ffmpegDownload.mjs && node tesseractLangDownload.mjs"
   },
   "devDependencies": {
     "@electron/notarize": "^2.1.0",
@@ -63,6 +63,7 @@
     "fuzzysort": "^2.0.4",
     "jsonfile": "^6.1.0",
     "ssh2": "^1.14.0",
+    "tesseract.js": "^5.0.3",
     "ytdl-core": "https://github.com/khlevon/node-ytdl-core.git#v4.11.5-patch.2"
   },
   "prettier": {
@@ -92,7 +93,8 @@
         ]
       },
       "LICENSE",
-      "ThirdPartyLicenses.txt"
+      "ThirdPartyLicenses.txt",
+      "eng.traineddata.gz"
     ],
     "fileAssociations": [
       {

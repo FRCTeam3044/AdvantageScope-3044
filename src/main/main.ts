@@ -28,10 +28,11 @@ import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
 import TabType, { getAllTabTypes, getDefaultTabTitle, getTabIcon } from "../shared/TabType";
 import { BUILD_DATE, COPYRIGHT, DISTRIBUTOR, Distributor } from "../shared/buildConstants";
-import { MERGE_MAX_FILES } from "../shared/log/MergeConstants";
+import { MERGE_MAX_FILES } from "../shared/log/LogUtil";
 import { UnitConversionPreset } from "../shared/units";
 import { jsonCopy } from "../shared/util";
 import {
+  DEFAULT_LOGS_FOLDER,
   DEFAULT_PREFS,
   DOWNLOAD_CONNECT_TIMEOUT_MS,
   DOWNLOAD_PASSWORD,
@@ -39,7 +40,6 @@ import {
   DOWNLOAD_RETRY_DELAY_MS,
   DOWNLOAD_USERNAME,
   LAST_OPEN_FILE,
-  OPEN_DEFAULT_PATH,
   PATHPLANNER_CONNECT_TIMEOUT_MS,
   PATHPLANNER_DATA_TIMEOUT_MS,
   PATHPLANNER_PING_DELAY_MS,
@@ -418,8 +418,18 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       let legend: string = message.data.legend;
       const editAxisMenu = new Menu();
 
-      // Left and right controls
-      if (legend !== "discrete") {
+      if (legend === "discrete") {
+        // Discrete controls
+        editAxisMenu.append(
+          new MenuItem({
+            label: "Add Enabled State",
+            click() {
+              sendMessage(window, "add-discrete-enabled");
+            }
+          })
+        );
+      } else {
+        // Left and right controls
         let lockedRange: [number, number] | null = message.data.lockedRange;
         let unitConversion: UnitConversionPreset = message.data.unitConversion;
 
@@ -815,7 +825,8 @@ function downloadSave(files: string[]) {
     selectPromise = dialog.showOpenDialog(downloadWindow, {
       title: "Select save location for robot logs",
       buttonLabel: "Save",
-      properties: ["openDirectory", "createDirectory", "dontAddToRecent"]
+      properties: ["openDirectory", "createDirectory", "dontAddToRecent"],
+      defaultPath: DEFAULT_LOGS_FOLDER
     });
   } else {
     let extension = path.extname(files[0]).slice(1);
@@ -877,7 +888,7 @@ function downloadSave(files: string[]) {
                         downloadWindow?.destroy();
                         downloadStop();
                         hubWindows[0].focus();
-                        sendMessage(hubWindows[0], "open-file", savePath);
+                        sendMessage(hubWindows[0], "open-files", [savePath]);
                       }
                     });
                 }
@@ -985,7 +996,7 @@ function setupMenu() {
                 title: "Select a robot log file to open",
                 properties: ["openFile"],
                 filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents"] }],
-                defaultPath: OPEN_DEFAULT_PATH
+                defaultPath: DEFAULT_LOGS_FOLDER
               })
               .then((files) => {
                 if (files.filePaths.length > 0) {
@@ -1004,7 +1015,7 @@ function setupMenu() {
               message: "Up to " + MERGE_MAX_FILES.toString() + " files can be opened together",
               properties: ["openFile", "multiSelections"],
               filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents"] }],
-              defaultPath: OPEN_DEFAULT_PATH
+              defaultPath: DEFAULT_LOGS_FOLDER
             });
             let files = filesResponse.filePaths;
             if (files.length === 0) {
@@ -1316,6 +1327,12 @@ function setupMenu() {
           label: "Report a Problem",
           click() {
             shell.openExternal("https://discord.gg/qPqPaFuAgZ");
+          }
+        },
+        {
+          label: "Contact Us",
+          click() {
+            shell.openExternal("mailto:software@team6328.org");
           }
         },
         {
@@ -2214,7 +2231,7 @@ app.whenReady().then(() => {
 
   // Open file if exists
   if (firstOpenPath !== null) {
-    sendMessage(window, "open-file", firstOpenPath);
+    sendMessage(window, "open-files", [firstOpenPath]);
   }
 
   // Create new window if activated while none exist
@@ -2238,7 +2255,7 @@ app.on("open-file", (_, path) => {
   if (app.isReady()) {
     // Already running, create a new window
     let window = createHubWindow();
-    sendMessage(window, "open-file", path);
+    sendMessage(window, "open-files", [path]);
   } else {
     // Not running yet, open in first window
     firstOpenPath = path;

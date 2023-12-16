@@ -2,7 +2,6 @@ import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
 import { HubState } from "../shared/HubState";
 import { SIM_ADDRESS, USB_ADDRESS } from "../shared/IPAddresses";
 import Log from "../shared/log/Log";
-import { getEnabledData } from "../shared/log/LogUtil";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
 import { clampValue, htmlEncode, scaleValue } from "../shared/util";
@@ -249,7 +248,7 @@ function startHistorical(paths: string[]) {
         let components = paths[0].split(window.platform === "win32" ? "\\" : "/");
         logFriendlyName = components[components.length - 1];
       } else {
-        logFriendlyName = paths.length.toString() + " Log File" + (paths.length === 1 ? "" : "s");
+        logFriendlyName = paths.length.toString() + " Log Files";
       }
       switch (status) {
         case HistoricalDataSourceStatus.Reading:
@@ -580,6 +579,10 @@ function handleMainMessage(message: NamedMessage) {
 
     case "rename-tab":
       window.tabs.renameTab(message.data.index, message.data.name);
+      break;
+
+    case "add-discrete-enabled":
+      window.tabs.addDiscreteEnabled();
       break;
 
     case "edit-axis":
