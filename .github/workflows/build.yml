@@ -406,7 +406,6 @@ jobs:
           upload_url: ${{ steps.get_release_info.outputs.upload_url }}
           asset_path: advantagescope-wpilib-linux-${{ matrix.arch }}.zip
           asset_name: advantagescope-wpilib-linux-${{ matrix.arch }}.zip
->>>>>>> upstream/main
           asset_content_type: "application/octet-stream"
 
   finalize-release:
