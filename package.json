@@ -1,7 +1,7 @@
 {
   "name": "advantagescope-3044",
   "productName": "AdvantageScope-3044",
-  "version": "3.1.0-beta-5",
+  "version": "3.0.1-3044",
   "description": "Robot telemetry application for FRC with extra features for oxconfig (Fork of FRC Team 6328 MechanicalAdvantage's AdvantageScope)",
   "author": {
     "name": "nab138 FRC 3044",
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@electron/notarize": "^2.1.0",
+    "@mcap/core": "^1.3.0",
     "@msgpack/msgpack": "^3.0.0-beta2",
     "@rollup/plugin-commonjs": "^25.0.4",
     "@rollup/plugin-json": "^6.0.0",
@@ -72,7 +73,7 @@
   },
   "build": {
     "appId": "team.frcteam3044.advantagescope-3044",
-    "copyright": "Copyright © 2023 FRC 3044",
+    "copyright": "Copyright © 2021-2024 FRC 6328",
     "npmRebuild": false,
     "publish": [],
     "afterSign": "notarize.js",
@@ -128,6 +129,14 @@
         "mimeType": "application/x-dsevents",
         "role": "Viewer",
         "icon": "icons/app/dsevents-icon"
+      },
+      {
+        "ext": "hoot",
+        "name": "Hoot robot log",
+        "description": "Hoot robot log",
+        "mimeType": "application/x-hoot",
+        "role": "Viewer",
+        "icon": "icons/app/hoot-icon"
       }
     ],
     "mac": {
@@ -135,6 +144,18 @@
       "icon": "icons/app/app-icon.icns",
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSUpdateSecurityPolicy": {
+          "AllowPackages": [
+            "58SET3NSX7"
+          ],
+          "AllowProcesses": {
+            "58SET3NSX7": [
+              "WPILibInstaller"
+            ]
+          }
+        }
+      },
       "notarize": false
     },
     "linux": {

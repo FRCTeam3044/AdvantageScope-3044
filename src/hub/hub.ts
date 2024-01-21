@@ -2,16 +2,19 @@ import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
 import { HubState } from "../shared/HubState";
 import { SIM_ADDRESS, USB_ADDRESS } from "../shared/IPAddresses";
 import Log from "../shared/log/Log";
+import { AKIT_TIMESTAMP_KEYS } from "../shared/log/LogUtil";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
 import { clampValue, htmlEncode, scaleValue } from "../shared/util";
 import { HistoricalDataSource, HistoricalDataSourceStatus } from "./dataSources/HistoricalDataSource";
 import { LiveDataSource, LiveDataSourceStatus } from "./dataSources/LiveDataSource";
+import LiveDataTuner from "./dataSources/LiveDataTuner";
 import loadZebra from "./dataSources/LoadZebra";
-import { NT4Publisher, NT4PublisherStatus } from "./dataSources/NT4Publisher";
-import NT4Source from "./dataSources/NT4Source";
+import { NT4Publisher, NT4PublisherStatus } from "./dataSources/nt4/NT4Publisher";
+import NT4Source from "./dataSources/nt4/NT4Source";
 import PathPlannerSource from "./dataSources/PathPlannerSource";
-import RLOGServerSource from "./dataSources/RLOGServerSource";
+import PhoenixDiagnosticsSource from "./dataSources/PhoenixDiagnosticsSource";
+import RLOGServerSource from "./dataSources/rlog/RLOGServerSource";
 import Selection from "./Selection";
 import Sidebar from "./Sidebar";
 import Tabs from "./Tabs";
@@ -38,6 +41,7 @@ declare global {
     selection: Selection;
     sidebar: Sidebar;
     tabs: Tabs;
+    tuner: LiveDataTuner | null;
     messagePort: MessagePort | null;
     setNt4: (topic: string, value: any) => void;
     isConnected: () => boolean;
@@ -59,6 +63,7 @@ window.fps = false;
 window.selection = new Selection();
 window.sidebar = new Sidebar();
 window.tabs = new Tabs();
+window.tuner = null;
 window.messagePort = null;
 
 let historicalSource: HistoricalDataSource | null = null;
@@ -237,6 +242,7 @@ window.requestAnimationFrame(periodic);
 function startHistorical(paths: string[]) {
   historicalSource?.stop();
   liveSource?.stop();
+  window.tuner = null;
   liveActive = false;
   setLoading(null);
 
@@ -262,10 +268,14 @@ function startHistorical(paths: string[]) {
         case HistoricalDataSourceStatus.Error:
           setWindowTitle(logFriendlyName, "Error");
           setLoading(null);
+          let message =
+            "There was a problem while reading the log file" + (paths.length === 1 ? "" : "s") + ". Please try again.";
+          if (historicalSource && historicalSource.getCustomError() !== null) {
+            message = historicalSource.getCustomError()!;
+          }
           window.sendMainMessage("error", {
             title: "Failed to open log" + (paths.length === 1 ? "" : "s"),
-            content:
-              "There was a problem while reading the log file" + (paths.length === 1 ? "" : "s") + ". Please try again."
+            content: message
           });
           break;
         case HistoricalDataSourceStatus.Stopped:
@@ -291,6 +301,7 @@ function startLive(isSim: boolean) {
   liveSource?.stop();
   publisher?.stop();
   liveActive = true;
+  setLoading(null);
 
   if (!window.preferences) return;
   switch (window.preferences.liveMode) {
@@ -299,6 +310,9 @@ function startLive(isSim: boolean) {
       break;
     case "nt4-akit":
       liveSource = new NT4Source(true);
+      break;
+    case "phoenix":
+      liveSource = new PhoenixDiagnosticsSource();
       break;
     case "pathplanner":
       liveSource = new PathPlannerSource();
@@ -352,6 +366,7 @@ function startLive(isSim: boolean) {
       window.tabs.refresh();
     }
   );
+  window.tuner = liveSource.getTuner();
 }
 
 // File dropped on window
@@ -618,9 +633,14 @@ function handleMainMessage(message: NamedMessage) {
         });
       } else {
         isExporting = true;
+        const incompleteWarning =
+          liveConnected &&
+          (window.preferences?.liveSubscribeMode === "low-bandwidth" || window.preferences?.liveMode === "phoenix");
+        const supportsAkit = window.log.getFieldKeys().find((key) => AKIT_TIMESTAMP_KEYS.includes(key)) !== undefined;
         window.sendMainMessage("prompt-export", {
           path: logPath,
-          incompleteWarning: liveConnected && window.preferences?.liveSubscribeMode === "low-bandwidth"
+          incompleteWarning: incompleteWarning,
+          supportsAkit: supportsAkit
         });
       }
       break;
@@ -653,6 +673,7 @@ function handleMainMessage(message: NamedMessage) {
             title: "Failed to export data",
             content: "There was a problem while converting to the export format. Please try again."
           });
+          setLoading(null);
         })
         .finally(() => {
           isExporting = false;

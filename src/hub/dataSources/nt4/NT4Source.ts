@@ -1,15 +1,17 @@
-import Log from "../../shared/log/Log";
-import { PROTO_PREFIX, STRUCT_PREFIX } from "../../shared/log/LogUtil";
-import LoggableType from "../../shared/log/LoggableType";
-import { checkArrayType } from "../../shared/util";
-import { LiveDataSource, LiveDataSourceStatus } from "./LiveDataSource";
+import Log from "../../../shared/log/Log";
+import { PROTO_PREFIX, STRUCT_PREFIX, getEnabledKey } from "../../../shared/log/LogUtil";
+import LoggableType from "../../../shared/log/LoggableType";
+import ProtoDecoder from "../../../shared/log/ProtoDecoder";
+import { checkArrayType } from "../../../shared/util";
+import { LiveDataSource, LiveDataSourceStatus } from "../LiveDataSource";
+import CustomSchemas from "../schema/CustomSchemas";
 import { NT4_Client, NT4_Topic } from "./NT4";
-import CustomSchemas from "./schema/CustomSchemas";
+import NT4Tuner from "./NT4Tuner";
+
+export const WPILOG_PREFIX = "NT:";
+export const AKIT_PREFIX = "/AdvantageKit";
 
 export default class NT4Source extends LiveDataSource {
-  private WPILOG_PREFIX = "NT:";
-  private AKIT_PREFIX = "/AdvantageKit";
-
   private akitMode: boolean;
   private client: NT4_Client | null = null;
 
@@ -27,7 +29,10 @@ export default class NT4Source extends LiveDataSource {
 
     this.periodicCallback = setInterval(() => {
       // Update timestamp range based on connection time
-      this.clearTimestampsBeforeConnection();
+      if (this.client !== null && this.connectTime !== null) {
+        let connectServerTime = this.client.getServerTime_us(this.connectTime);
+        if (connectServerTime !== null) window.log.clearBeforeTime(connectServerTime / 1e6);
+      }
 
       // Update subscriptions
       if (this.client !== null) {
@@ -43,7 +48,7 @@ export default class NT4Source extends LiveDataSource {
           }
           if (this.loggingSubscription === null) {
             this.loggingSubscription = this.client.subscribe(
-              [this.akitMode ? this.AKIT_PREFIX + "/" : "/"],
+              [this.akitMode ? AKIT_PREFIX + "/" : ""],
               true,
               true,
               0.02
@@ -57,7 +62,7 @@ export default class NT4Source extends LiveDataSource {
           }
           if (this.lowBandwidthTopicSubscription === null) {
             this.lowBandwidthTopicSubscription = this.client.subscribeTopicsOnly(
-              [this.akitMode ? this.AKIT_PREFIX + "/" : "/"],
+              [this.akitMode ? AKIT_PREFIX + "/" : ""],
               true
             );
           }
@@ -66,10 +71,16 @@ export default class NT4Source extends LiveDataSource {
           let activeFields: Set<string> = new Set();
           if (window.log === this.log) {
             let announcedKeys = this.log.getFieldKeys().filter((key) => this.log?.getType(key) !== LoggableType.Empty);
+            let enabledKey = getEnabledKey(this.log);
             [
               ...(this.akitMode
-                ? ["/.schema"]
-                : [this.WPILOG_PREFIX + "/.schema", this.WPILOG_PREFIX + this.AKIT_PREFIX + "/.schema"]),
+                ? ["/.schema", "/Timestamps"]
+                : [
+                    WPILOG_PREFIX + "/.schema",
+                    WPILOG_PREFIX + AKIT_PREFIX + "/.schema",
+                    WPILOG_PREFIX + AKIT_PREFIX + "/Timestamp"
+                  ]),
+              ...(enabledKey === undefined ? [] : [enabledKey]),
               ...window.tabs.getActiveFields(),
               ...window.sidebar.getActiveFields()
             ].forEach((key) => {
@@ -83,9 +94,9 @@ export default class NT4Source extends LiveDataSource {
                 }
                 if (subscribeKey !== null) {
                   if (akitMode) {
-                    activeFields.add(this.AKIT_PREFIX + subscribeKey);
+                    activeFields.add(AKIT_PREFIX + subscribeKey);
                   } else {
-                    activeFields.add(subscribeKey.slice(this.WPILOG_PREFIX.length));
+                    activeFields.add(subscribeKey.slice(WPILOG_PREFIX.length));
                   }
                 }
               });
@@ -144,16 +155,6 @@ export default class NT4Source extends LiveDataSource {
     }, 1000 / 60);
   }
 
-  /** If the connection is active and the server connection time is known,
-   * clear data before that time. This prevents topics that haven't been
-   * updated for a while from altering the timestamp range. */
-  private clearTimestampsBeforeConnection() {
-    if (this.client !== null && this.connectTime !== null) {
-      let connectServerTime = this.client.getServerTime_us(this.connectTime);
-      if (connectServerTime !== null) window.log.clearBeforeTime(connectServerTime / 1e6);
-    }
-  }
-
   connect(
     address: string,
     statusCallback: (status: LiveDataSourceStatus) => void,
@@ -182,7 +183,11 @@ export default class NT4Source extends LiveDataSource {
               structuredType = structuredType.slice(0, -2);
             }
           } else if (topic.type.startsWith(PROTO_PREFIX)) {
-            structuredType = topic.type.split(PROTO_PREFIX)[1];
+            structuredType = ProtoDecoder.getFriendlySchemaType(topic.type.split(PROTO_PREFIX)[1]);
+          } else if (topic.type === "msgpack") {
+            structuredType = "MessagePack";
+          } else if (topic.type === "json") {
+            structuredType = "JSON";
           }
           this.log.createBlankField(modifiedKey, this.getLogType(topic.type));
           this.log.setWpilibType(modifiedKey, topic.type);
@@ -284,7 +289,11 @@ export default class NT4Source extends LiveDataSource {
                 } else {
                   this.log?.putRaw(key, timestamp, value);
                   if (CustomSchemas.has(topic.type)) {
-                    CustomSchemas.get(topic.type)!(this.log, key, timestamp, value);
+                    try {
+                      CustomSchemas.get(topic.type)!(this.log, key, timestamp, value);
+                    } catch {
+                      console.error('Failed to decode custom schema "' + topic.type + '"');
+                    }
                     this.log.setGeneratedParent(key);
                   }
                 }
@@ -296,7 +305,6 @@ export default class NT4Source extends LiveDataSource {
           }
           if (updated) {
             this.shouldRunOutputCallback = true;
-            this.clearTimestampsBeforeConnection();
           }
         },
         () => {
@@ -350,12 +358,23 @@ export default class NT4Source extends LiveDataSource {
     return this.status === LiveDataSourceStatus.Active;
   }
 
+  getTuner() {
+    if (this.akitMode) {
+      // Tuning is not applicable with AdvantageKit
+      return null;
+    } else if (this.client === null || this.log === null) {
+      throw "Cannot create NT4 tuner before starting connection";
+    } else {
+      return new NT4Tuner(this.client);
+    }
+  }
+
   /** Gets the name of the topic, depending on whether we're running in AdvantageKit mode. */
   private getKeyFromTopic(topic: NT4_Topic): string {
     if (this.akitMode) {
-      return topic.name.slice(this.AKIT_PREFIX.length);
+      return topic.name.slice(AKIT_PREFIX.length);
     } else {
-      return this.WPILOG_PREFIX + topic.name;
+      return WPILOG_PREFIX + topic.name;
     }
   }
 

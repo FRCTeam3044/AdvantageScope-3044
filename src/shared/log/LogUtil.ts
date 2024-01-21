@@ -13,15 +13,17 @@ export const PROTO_PREFIX = "proto:";
 export const MAX_SEARCH_RESULTS = 128;
 export const MERGE_PREFIX = "Log";
 export const MERGE_MAX_FILES = 10;
-export const SEPARATOR_REGEX = new RegExp(/\/|:|_/);
+export const SEPARATOR_REGEX = new RegExp(/\/|:/);
+export const SEPARATOR_REGEX_PHOENIX = new RegExp(/\/|:|_/);
+export const PHOENIX_PREFIX = "Phoenix6";
 export const ENABLED_KEYS = withMergedKeys([
   "/DriverStation/Enabled",
   "NT:/AdvantageKit/DriverStation/Enabled",
   "DS:enabled",
   "NT:/FMSInfo/FMSControlData",
   "/DSLog/Status/DSDisabled",
-  "Phoenix6/.+/DeviceEnable"
-]).map((key) => new RegExp(key));
+  "RobotEnable" // Phoenix
+]);
 export const ALLIANCE_KEYS = withMergedKeys([
   "/DriverStation/AllianceStation",
   "NT:/AdvantageKit/DriverStation/AllianceStation",
@@ -37,9 +39,12 @@ export const SYSTEM_TIME_KEYS = withMergedKeys([
   "NT:/AdvantageKit/SystemStats/EpochTimeMicros",
   "systemTime"
 ]);
+export const AKIT_TIMESTAMP_KEYS = withMergedKeys(["/Timestamp", "NT:/AdvantageKit/Timestamp"]);
 export const METADATA_KEYS = withMergedKeys([
+  "/Metadata",
   "/RealMetadata",
   "/ReplayMetadata",
+  "NT:/Metadata",
   "NT:/AdvantageKit/RealMetadata",
   "NT:/AdvantageKit/ReplayMetadata"
 ]);
@@ -113,6 +118,14 @@ export function logValuesEqual(type: LoggableType, a: any, b: any): boolean {
   }
 }
 
+export function splitLogKey(key: string): string[] {
+  if (key.startsWith(PHOENIX_PREFIX)) {
+    return key.split(SEPARATOR_REGEX_PHOENIX);
+  } else {
+    return key.split(SEPARATOR_REGEX);
+  }
+}
+
 export function filterFieldByPrefixes(
   fields: string[],
   prefixes: string,
@@ -121,10 +134,10 @@ export function filterFieldByPrefixes(
 ) {
   let filteredFields: Set<string> = new Set();
   prefixes.split(",").forEach((prefix) => {
-    let prefixSeries = prefix.split(SEPARATOR_REGEX).filter((item) => item.length > 0);
+    let prefixSeries = splitLogKey(prefix).filter((item) => item.length > 0);
     if (ntOnly) prefixSeries.splice(0, 0, "NT");
     fields.forEach((field) => {
-      let fieldSeries = field.split(SEPARATOR_REGEX).filter((item) => item.length > 0);
+      let fieldSeries = splitLogKey(field).filter((item) => item.length > 0);
       if (fieldSeries.length < prefixSeries.length) return;
       if (
         prefixSeries.every((prefix, index) => fieldSeries[index].toLowerCase() === prefix.toLowerCase()) ||
@@ -138,17 +151,7 @@ export function filterFieldByPrefixes(
 }
 
 export function getEnabledKey(log: Log): string | undefined {
-  let logKeys = log.getFieldKeys();
-  for (let logKeyIndex = 0; logKeyIndex < logKeys.length; logKeyIndex++) {
-    let logKey = logKeys[logKeyIndex];
-    for (let enabledKeyIndex = 0; enabledKeyIndex < ENABLED_KEYS.length; enabledKeyIndex++) {
-      let enabledKey = ENABLED_KEYS[enabledKeyIndex];
-      if (enabledKey.test(logKey)) {
-        return logKey;
-      }
-    }
-  }
-  return undefined;
+  return ENABLED_KEYS.find((key) => log.getFieldKeys().includes(key));
 }
 
 export function getEnabledData(log: Log): LogValueSetBoolean | null {
@@ -161,14 +164,6 @@ export function getEnabledData(log: Log): LogValueSetBoolean | null {
       enabledData = {
         timestamps: tempEnabledData.timestamps,
         values: tempEnabledData.values.map((controlWord) => controlWord % 2 === 1)
-      };
-    }
-  } else if (enabledKey.endsWith("DeviceEnable")) {
-    let tempEnabledData = log.getString(enabledKey, -Infinity, Infinity);
-    if (tempEnabledData) {
-      enabledData = {
-        timestamps: tempEnabledData.timestamps,
-        values: tempEnabledData.values.map((state) => state === "Enabled")
       };
     }
   } else {

@@ -1,8 +1,8 @@
-import Log from "../../shared/log/Log";
-import { PROTO_PREFIX, STRUCT_PREFIX } from "../../shared/log/LogUtil";
-import LoggableType from "../../shared/log/LoggableType";
-import CustomSchemas from "./schema/CustomSchemas";
-import { WPILOGDecoder } from "./wpilog/WPILOGDecoder";
+import Log from "../../../shared/log/Log";
+import { PROTO_PREFIX, STRUCT_PREFIX } from "../../../shared/log/LogUtil";
+import LoggableType from "../../../shared/log/LoggableType";
+import CustomSchemas from "../schema/CustomSchemas";
+import { WPILOGDecoder } from "./WPILOGDecoder";
 
 self.onmessage = (event) => {
   // WORKER SETUP
@@ -64,6 +64,12 @@ self.onmessage = (event) => {
               break;
           }
           log.setWpilibType(startData.name, startData.type);
+          log.setMetadataString(startData.name, startData.metadata);
+        } else if (record.isSetMetadata()) {
+          let setMetadataData = record.getSetMetadataData();
+          if (setMetadataData.entry in entryIds) {
+            log.setMetadataString(entryIds[setMetadataData.entry], setMetadataData.metadata);
+          }
         }
       } else {
         let key = entryIds[record.getEntry()];
@@ -123,7 +129,11 @@ self.onmessage = (event) => {
               } else {
                 log.putRaw(key, timestamp, record.getRaw());
                 if (CustomSchemas.has(type)) {
-                  CustomSchemas.get(type)!(log, key, timestamp, record.getRaw());
+                  try {
+                    CustomSchemas.get(type)!(log, key, timestamp, record.getRaw());
+                  } catch {
+                    console.error('Failed to decode custom schema "' + type + '"');
+                  }
                   log.setGeneratedParent(key);
                 }
               }

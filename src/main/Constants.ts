@@ -33,7 +33,8 @@ export const DEFAULT_PREFS: Preferences = {
   threeDimensionModeAc: "standard",
   threeDimensionModeBattery: "",
   tbaApiKey: "",
-  deployDirectory: ""
+  deployDirectory: "",
+  skipHootNonProWarning: false
 };
 
 // Live RLOG

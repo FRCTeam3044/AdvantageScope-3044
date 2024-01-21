@@ -94,6 +94,7 @@ export default class ThreeDimensionController extends TimelineVizController {
 
   private lastCameraIndex = -1;
   private lastFov = 50;
+  private newAssetsCounter = 0;
 
   constructor(content: HTMLElement) {
     let configBody = content.getElementsByClassName("timeline-viz-config")[0].firstElementChild as HTMLElement;
@@ -174,20 +175,20 @@ export default class ThreeDimensionController extends TimelineVizController {
     this.UNIT_ROTATION = configBody.children[3].children[0].children[2] as HTMLInputElement;
 
     // Set default alliance value
-    this.ALLIANCE.value = "blue";
+    this.ALLIANCE.value = "auto";
 
     // Add initial set of options
     this.resetFieldRobotOptions();
 
     // Bind source links
-    this.FIELD.addEventListener("change", () => this.updateFieldRobotExtraControls());
+    this.FIELD.addEventListener("change", () => this.updateFieldRobotDependentControls());
     this.FIELD_SOURCE_LINK.addEventListener("click", () => {
       window.sendMainMessage(
         "open-link",
         window.assets?.field3ds.find((field) => field.name === this.FIELD.value)?.sourceUrl
       );
     });
-    this.ROBOT.addEventListener("change", () => this.updateFieldRobotExtraControls());
+    this.ROBOT.addEventListener("change", () => this.updateFieldRobotDependentControls(true));
     this.ROBOT_SOURCE_LINK.addEventListener("click", () => {
       window.sendMainMessage(
         "open-link",
@@ -198,6 +199,7 @@ export default class ThreeDimensionController extends TimelineVizController {
 
   /** Clears all options from the field and robot selectors then updates them with the latest options. */
   private resetFieldRobotOptions() {
+    let fieldChanged = false;
     {
       let value = this.FIELD.value;
       while (this.FIELD.firstChild) {
@@ -217,6 +219,7 @@ export default class ThreeDimensionController extends TimelineVizController {
       } else {
         this.FIELD.value = options[0];
       }
+      fieldChanged = this.FIELD.value !== value;
     }
     {
       let value = this.ROBOT.value;
@@ -238,11 +241,11 @@ export default class ThreeDimensionController extends TimelineVizController {
         this.ROBOT.value = options[0];
       }
     }
-    this.updateFieldRobotExtraControls();
+    this.updateFieldRobotDependentControls(!fieldChanged);
   }
 
   /** Updates the alliance and source buttons based on the selected value. */
-  private updateFieldRobotExtraControls() {
+  private updateFieldRobotDependentControls(skipAllianceReset = false) {
     let fieldConfig = window.assets?.field3ds.find((game) => game.name === this.FIELD.value);
     this.FIELD_SOURCE_LINK.hidden = fieldConfig === undefined || fieldConfig.sourceUrl === undefined;
     if (this.FIELD.value === "Axes") this.ALLIANCE.value = "blue";
@@ -250,6 +253,10 @@ export default class ThreeDimensionController extends TimelineVizController {
 
     let robotConfig = window.assets?.robots.find((game) => game.name === this.ROBOT.value);
     this.ROBOT_SOURCE_LINK.hidden = robotConfig !== undefined && robotConfig.sourceUrl === undefined;
+
+    if (fieldConfig !== undefined && !skipAllianceReset) {
+      this.ALLIANCE.value = fieldConfig.defaultOrigin;
+    }
   }
 
   get options(): { [id: string]: any } {
@@ -271,13 +278,14 @@ export default class ThreeDimensionController extends TimelineVizController {
     this.ROBOT.value = options.robot;
     this.UNIT_DISTANCE.value = options.unitDistance;
     this.UNIT_ROTATION.value = options.unitRotation;
-    this.updateFieldRobotExtraControls();
+    this.updateFieldRobotDependentControls(true);
     this.set3DCamera(options.cameraIndex);
     this.setFov(options.fov);
   }
 
   newAssets() {
     this.resetFieldRobotOptions();
+    this.newAssetsCounter++;
   }
 
   /** Switches the selected camera for the main visualizer. */
@@ -727,7 +735,8 @@ export default class ThreeDimensionController extends TimelineVizController {
         zebraYellowGhost: zebraYellowGhostData
       },
       options: this.options,
-      allianceRedOrigin: allianceRedOrigin
+      allianceRedOrigin: allianceRedOrigin,
+      newAssetsCounter: this.newAssetsCounter
     };
   }
 }

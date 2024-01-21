@@ -20,8 +20,11 @@ The following sources of live data are supported by AdvantageScope:
 
 - **NetworkTables 4:** This is the default networking protocol starting in WPILib 2023, and is commonly used by dashboards, coprocessors, etc. See the [WPILib documentation](https://docs.wpilib.org/en/stable/docs/software/networktables/index.html) for more details. Note that NetworkTables 3 (used by WPILib 2022 and older) is not supported by AdvantageScope.
 - **NetworkTables 4 (AdvantageKit):** This mode is designed for use with robot code running AdvantageKit, which publishes to the "/AdvantageKit" table in NetworkTables. The only difference from the **NetworkTables 4** mode is that the "/AdvantageKit" table is used as the root, which allows for easier switching between an NT4 connection and an AdvantageKit log file.
+- **Phoenix Diagnostics:** This mode uses HTTP to connect to a Phoenix [diagnostic server](https://pro.docs.ctr-electronics.com/en/latest/docs/installation/running-diagnostics.html), which allows for data streaming from CTRE CAN devices with [Phoenix 6](https://pro.docs.ctr-electronics.com/en/latest/). This is similar to the [plotting feature](https://pro.docs.ctr-electronics.com/en/latest/docs/tuner/plotting.html) in Phoenix Tuner, but includes support for previewing values in the sidebar and storing the full history of signals (like any other AdvantageScope live source). Note that the diagnostic server only supports plotting signals from **one device at a time**. AdvantageScope will switch between devices automatically based on the signals being viewed.
 - **PathPlanner 2023:** This mode connects using the `PathPlannerServer` protocol used for telemetry by PathPlanner 2023. The connection is always initiated on port 5811. Note that PathPlanner 2024 and later publish telemetry data using NetworkTables, so the **NetworkTables 4** mode should be used.
 - **RLOG Server:** This protocol is used by AdvantageKit v1 (2022), and is included for compatibility with older code bases. The connection is initiated on port 5810 by default.
+
+> Note: The Phoenix Diagnostics live mode uses an undocumented protocol that may be changed in future Phoenix updates. If this mode does not function properly, please update to the latest version of AdvantageScope. If the issue persists, please [open an issue](https://github.com/Mechanical-Advantage/AdvantageScope/issues) to let us know.
 
 ### Live Mode
 
@@ -50,3 +53,14 @@ When connected to a live source, AdvantageScope locks all tabs to the current ti
 > Note: Scrolling to the left in the line graph also unlocks from the current time, and scrolling all the way to the right locks to the current time again.
 
 ![Live lock/unlock button](/docs/resources/open-live/open-live-2.png)
+
+## Tuning Mode
+
+Some live sources support live tuning of numeric and boolean values. For example, this feature can be used to [tune controller gains](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/introduction/tutorial-intro.html) when connected to a NetworkTables source. Note that the robot code must support receiving gains via NetworkTables.
+
+By default, all values in AdvantageScope are read-only. To toggle tuning mode, **click the slider icon** to the right of the search bar when connected to a supported live source. When the icon is <span style="color: purple;">purple</span>, tuning mode is active and field editing is enabled.
+
+- To edit a **numeric field**, enter a new value using the text box to the right of the field in the sidebar. Leave the text box blank to use the robot-published value.
+- To toggle a **boolean field**, click the red or green circle to the right of the field in the sidebar.
+
+> Note: This feature is not intended for controlling the robot on the field. Support for dashboard-style inputs like choosers, trigger buttons, etc. will not be added.
