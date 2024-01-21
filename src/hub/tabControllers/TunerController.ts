@@ -165,8 +165,8 @@ export default class TunerController implements TabController {
 
     // Scroll handling
     this.SCROLL_OVERLAY.addEventListener("mousemove", (event) => {
-      // This is a dirty hack because I can't figure out why the mouse position doesn't line up, so I just add 49.
-      this.lastCursorX = event.clientX - this.SCROLL_OVERLAY.getBoundingClientRect().x + 49;
+      // This is a dirty hack because I can't figure out why the mouse position doesn't line up, so I just add 50.
+      this.lastCursorX = event.clientX - this.SCROLL_OVERLAY.getBoundingClientRect().x + 50;
     });
     this.SCROLL_OVERLAY.addEventListener("mouseleave", () => {
       this.lastCursorX = null;
