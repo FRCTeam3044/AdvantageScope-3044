@@ -6,7 +6,7 @@ const EXIT_BUTTON = document.getElementById("exit") as HTMLInputElement;
 const CONFIRM_BUTTON = document.getElementById("confirm") as HTMLInputElement;
 
 window.addEventListener("message", (event) => {
-  if (event.source == window && event.data == "port") {
+  if (event.source === window && event.data === "port") {
     let messagePort = event.ports[0];
     messagePort.onmessage = (event) => {
       // Update button focus
@@ -27,6 +27,7 @@ window.addEventListener("message", (event) => {
       // Update values
       MIN_INPUT.value = cleanFloat(range[0]).toString();
       MAX_INPUT.value = cleanFloat(range[1]).toString();
+      MAX_INPUT.select();
 
       // Close function
       function confirm() {
@@ -45,7 +46,7 @@ window.addEventListener("message", (event) => {
       });
       CONFIRM_BUTTON.addEventListener("click", confirm);
       window.addEventListener("keydown", (event) => {
-        if (event.code == "Enter") confirm();
+        if (event.code === "Enter") confirm();
       });
     };
   }

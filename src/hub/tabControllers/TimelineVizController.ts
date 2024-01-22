@@ -2,34 +2,51 @@ import { TimelineVisualizerState } from "../../shared/HubState";
 import LoggableType from "../../shared/log/LoggableType";
 import { getEnabledData } from "../../shared/log/LogUtil";
 import TabType from "../../shared/TabType";
-import { arraysEqual, createUUID } from "../../shared/util";
+import { arraysEqual, clampValue, createUUID, scaleValue } from "../../shared/util";
 import Visualizer from "../../shared/visualizers/Visualizer";
 import { SelectionMode } from "../Selection";
 import TabController from "../TabController";
 
 export default abstract class TimelineVizController implements TabController {
+  private HANDLE_WIDTH = 4;
+
   protected UUID = createUUID();
   protected CONTENT: HTMLElement;
   private TIMELINE_INPUT: HTMLInputElement;
   private TIMELINE_MARKER_CONTAINER: HTMLElement;
+  private TIMELINE_LABEL: HTMLElement;
   private DRAG_HIGHLIGHT: HTMLElement;
   private CONFIG_TABLE: HTMLElement;
+  private HIDE_BUTTON: HTMLButtonElement;
+  private SHOW_BUTTON: HTMLButtonElement;
 
   private type: TabType;
   private title: string = "";
-  private fieldConfig: { element: HTMLElement; types: (LoggableType | "mechanism")[] }[];
-  private fields: (string | null)[] = [];
-  private listConfig: { element: HTMLElement; types: (LoggableType | "mechanism")[]; options: string[][] }[];
-  private listFields: { type: string; key: string; fieldTypeIndex: number }[][] = [];
+  private fieldConfig: { element: HTMLElement; types: (LoggableType | string)[] }[];
+  private fields: ({ key: string; sourceTypeIndex: number; sourceType: LoggableType | string } | null)[] = [];
+  private listConfig: {
+    element: HTMLElement;
+    types: (LoggableType | string)[];
+    options: string[][];
+    autoAdvanceOptions?: boolean[];
+  }[];
+  private listFields: { type: string; key: string; sourceTypeIndex: number; sourceType: LoggableType | string }[][] =
+    [];
   private lastListFieldsStr: string = "";
   private lastAllKeys: string[] = [];
+  private periodicInterval: number;
   protected visualizer: Visualizer;
 
   constructor(
     content: HTMLElement,
     type: TabType,
-    fieldConfig: { element: HTMLElement; types: (LoggableType | "mechanism")[] }[],
-    listConfig: { element: HTMLElement; types: (LoggableType | "mechanism")[]; options: string[][] }[],
+    fieldConfig: { element: HTMLElement; types: (LoggableType | string)[] }[],
+    listConfig: {
+      element: HTMLElement;
+      types: (LoggableType | string)[];
+      options: string[][];
+      autoAdvanceOptions?: boolean[];
+    }[],
     visualizer: Visualizer
   ) {
     this.CONTENT = content;
@@ -42,6 +59,7 @@ export default abstract class TimelineVizController implements TabController {
     this.TIMELINE_MARKER_CONTAINER = content.getElementsByClassName(
       "timeline-viz-timeline-marker-container"
     )[0] as HTMLElement;
+    this.TIMELINE_LABEL = content.getElementsByClassName("timeline-viz-timeline-label")[0] as HTMLElement;
     this.DRAG_HIGHLIGHT = content.getElementsByClassName("timeline-viz-drag-highlight")[0] as HTMLElement;
     this.CONFIG_TABLE = content.getElementsByClassName("timeline-viz-config")[0] as HTMLElement;
 
@@ -49,11 +67,40 @@ export default abstract class TimelineVizController implements TabController {
     this.TIMELINE_INPUT.addEventListener("input", () => {
       window.selection.setSelectedTime(Number(this.TIMELINE_INPUT.value));
     });
+    content.getElementsByClassName("timeline-viz-reset-button")[0].addEventListener("click", () => {
+      let enabledData = getEnabledData(window.log);
+      if (enabledData) {
+        for (let i = 0; i < enabledData.timestamps.length; i++) {
+          if (enabledData.values[i]) {
+            window.selection.setSelectedTime(enabledData.timestamps[i]);
+            return;
+          }
+        }
+      }
+    });
+    this.HIDE_BUTTON = content.getElementsByClassName("timeline-viz-hide-button")[0] as HTMLButtonElement;
+    this.SHOW_BUTTON = content.getElementsByClassName("timeline-viz-show-button")[0] as HTMLButtonElement;
+    this.HIDE_BUTTON.addEventListener("click", () => {
+      this.HIDE_BUTTON.hidden = true;
+      this.SHOW_BUTTON.hidden = false;
+      this.CONFIG_TABLE.hidden = true;
+    });
+    this.SHOW_BUTTON.addEventListener("click", () => {
+      this.HIDE_BUTTON.hidden = false;
+      this.SHOW_BUTTON.hidden = true;
+      this.CONFIG_TABLE.hidden = false;
+    });
     content.getElementsByClassName("timeline-viz-popup-button")[0].addEventListener("click", () => {
       window.sendMainMessage("create-satellite", {
         uuid: this.UUID,
         type: this.type
       });
+    });
+    this.TIMELINE_INPUT.addEventListener("mouseenter", () => {
+      this.TIMELINE_LABEL.classList.add("show");
+    });
+    this.TIMELINE_INPUT.addEventListener("mouseleave", () => {
+      this.TIMELINE_LABEL.classList.remove("show");
     });
 
     // Drag handling
@@ -76,10 +123,14 @@ export default abstract class TimelineVizController implements TabController {
     });
 
     // Start periodic cycle
-    window.setInterval(() => this.customPeriodic(), 1000 / 60);
+    this.periodicInterval = window.setInterval(() => this.customPeriodic(), 1000 / 60);
 
     // Refresh timeline immediately
     this.refresh();
+  }
+
+  stopPeriodic() {
+    window.clearInterval(this.periodicInterval);
   }
 
   saveState(): TimelineVisualizerState {
@@ -88,15 +139,19 @@ export default abstract class TimelineVizController implements TabController {
       type: type,
       fields: this.fields,
       listFields: this.listFields,
-      options: this.options
+      options: this.options,
+      configHidden: this.CONFIG_TABLE.hidden
     };
   }
 
   restoreState(state: TimelineVisualizerState) {
-    if (state.type != this.type) return;
+    if (state.type !== this.type) return;
     this.fields = state.fields;
     this.listFields = state.listFields;
     this.options = state.options;
+    this.HIDE_BUTTON.hidden = state.configHidden;
+    this.SHOW_BUTTON.hidden = !state.configHidden;
+    this.CONFIG_TABLE.hidden = state.configHidden;
     this.updateFields();
   }
 
@@ -110,31 +165,56 @@ export default abstract class TimelineVizController implements TabController {
         let rect = field.element.getBoundingClientRect();
         let active =
           dragData.x > rect.left && dragData.x < rect.right && dragData.y > rect.top && dragData.y < rect.bottom;
-        let rawType = window.log.getType(dragData.data.fields[0]);
-        let type: LoggableType | "mechanism" = rawType === undefined ? "mechanism" : rawType!;
-        let validType = field.types.includes(type);
+        let anyValidType = false;
+        dragData.data.fields.forEach((dragField: string, dragFieldIndex: number) => {
+          if (configIndex === 0 && anyValidType) return; // Single field and valid field already found
+          let logType = window.log.getType(dragField);
+          let structuredType = window.log.getStructuredType(dragField);
+          let validLogType = logType !== null && field.types.includes(logType);
+          let validStructuredType = structuredType !== null && field.types.includes(structuredType);
+          let validType = validLogType || validStructuredType;
+          anyValidType = anyValidType || validType;
 
-        if (active && validType) {
-          if (dragData.end) {
-            let key = dragData.data.fields[0];
-            if (configIndex == 0) {
+          if (active && validType && dragData.end) {
+            if (configIndex === 0) {
               // Single field
-              this.fields[index] = key;
+              let typeIndex = this.fieldConfig[index].types.indexOf(validStructuredType ? structuredType! : logType!);
+              this.fields[index] = {
+                key: dragField,
+                sourceTypeIndex: typeIndex,
+                sourceType: this.fieldConfig[index].types[typeIndex]
+              };
             } else {
               // List field
               let selectedOptions = this.listFields[index].map((field) => field.type);
-              let typeIndex = this.listConfig[index].types.indexOf(type);
-              let availableOptions = this.listConfig[index].options[typeIndex].filter(
-                (option) => !selectedOptions.includes(option)
-              );
-              if (availableOptions.length == 0) availableOptions.push(this.listConfig[index].options[typeIndex][0]);
+              let typeIndex = this.listConfig[index].types.indexOf(validStructuredType ? structuredType! : logType!);
+              let availableOptions = this.listConfig[index].options[typeIndex];
+              if (
+                this.listConfig[index].autoAdvanceOptions === undefined ||
+                this.listConfig[index].autoAdvanceOptions![typeIndex]
+              ) {
+                availableOptions = availableOptions.filter((option) => !selectedOptions.includes(option));
+                if (availableOptions.length === 0) {
+                  availableOptions.push(this.listConfig[index].options[typeIndex][0]);
+                }
+              }
               this.listFields[index].push({
                 type: availableOptions[0],
-                key: key,
-                fieldTypeIndex: typeIndex
+                key: dragField,
+                sourceTypeIndex: typeIndex,
+                sourceType: this.listConfig[index].types[typeIndex]
               });
             }
+          }
+        });
+        if (active && anyValidType) {
+          if (dragData.end) {
             this.updateFields();
+            if (configIndex === 1) {
+              // List field, scroll to bottom
+              let listContent = field.element.firstElementChild as HTMLElement;
+              listContent.scrollTop = listContent.scrollHeight;
+            }
           } else {
             let contentRect = this.CONTENT.getBoundingClientRect();
             this.DRAG_HIGHLIGHT.style.left = (rect.left - contentRect.left).toString() + "px";
@@ -166,9 +246,9 @@ export default abstract class TimelineVizController implements TabController {
     // Single fields
     Object.values(this.fieldConfig).forEach((field, index) => {
       let textElement = field.element.lastElementChild as HTMLElement;
-      let key = this.fields[index];
+      let key = this.fields[index]?.key;
 
-      if (key == null) {
+      if (key === undefined) {
         textElement.innerText = "<Drag Here>";
         textElement.style.textDecoration = "";
       } else if (!this.keyAvailable(key)) {
@@ -182,7 +262,7 @@ export default abstract class TimelineVizController implements TabController {
 
     // Exit if list fields and available fields have not changed
     let listFieldsStr = JSON.stringify(this.listFields);
-    if (arraysEqual(allKeys, this.lastAllKeys) && listFieldsStr == this.lastListFieldsStr) {
+    if (arraysEqual(allKeys, this.lastAllKeys) && listFieldsStr === this.lastListFieldsStr) {
       return;
     }
     this.lastAllKeys = allKeys;
@@ -190,24 +270,26 @@ export default abstract class TimelineVizController implements TabController {
 
     // List fields
     Object.values(this.listConfig).forEach((list, index) => {
+      let content = list.element.firstElementChild as HTMLElement;
+
       // Clear elements
-      while (list.element.firstChild) {
-        list.element.removeChild(list.element.firstChild);
+      while (content.firstChild) {
+        content.removeChild(content.firstChild);
       }
 
       // Add filler if necessary
-      if (this.listFields[index].length == 0) {
+      if (this.listFields[index].length === 0) {
         let fillerElement = document.createElement("div");
         fillerElement.classList.add("list-filler");
         fillerElement.innerText = "<Drag Here>";
-        list.element.appendChild(fillerElement);
+        content.appendChild(fillerElement);
       }
 
       // Add fields
       this.listFields[index].forEach((field, fieldIndex) => {
         let itemElement = document.createElement("div");
         itemElement.classList.add("list-item");
-        list.element.appendChild(itemElement);
+        content.appendChild(itemElement);
         itemElement.addEventListener("contextmenu", () => {
           this.listFields[index].splice(fieldIndex, 1);
           this.updateFields();
@@ -219,7 +301,7 @@ export default abstract class TimelineVizController implements TabController {
         itemElement.appendChild(labelElement);
 
         let selectElement = labelElement.firstChild as HTMLSelectElement;
-        list.options[field.fieldTypeIndex].forEach((option) => {
+        list.options[field.sourceTypeIndex].forEach((option) => {
           let optionElement = document.createElement("option");
           optionElement.innerText = option;
           selectElement.appendChild(optionElement);
@@ -249,7 +331,7 @@ export default abstract class TimelineVizController implements TabController {
   }
 
   getActiveFields(): string[] {
-    let activeFields = this.fields.filter((field) => field !== null) as string[];
+    let activeFields = this.fields.filter((field) => field !== null).map((field) => field?.key) as string[];
     this.listFields.forEach((group) =>
       group.forEach((field) => {
         activeFields.push(field.key);
@@ -258,7 +340,30 @@ export default abstract class TimelineVizController implements TabController {
     return [...activeFields, ...this.getAdditionalActiveFields()];
   }
 
-  periodic() {}
+  periodic() {
+    // Update list shadows
+    Object.values(this.listConfig).forEach((list) => {
+      let content = list.element.firstElementChild as HTMLElement;
+      let shadowTop = list.element.getElementsByClassName("list-shadow-top")[0] as HTMLElement;
+      let shadowBottom = list.element.getElementsByClassName("list-shadow-bottom")[0] as HTMLElement;
+      shadowTop.style.opacity = content.scrollTop === 0 ? "0" : "1";
+      shadowBottom.style.opacity =
+        Math.ceil(content.scrollTop + content.clientHeight) >= content.scrollHeight ? "0" : "1";
+    });
+
+    // Update timeline label position
+    {
+      let contentBox = this.CONTENT.getBoundingClientRect();
+      let timelineBox = this.TIMELINE_MARKER_CONTAINER.getBoundingClientRect();
+      let windowX = scaleValue(
+        Number(this.TIMELINE_INPUT.value),
+        [Number(this.TIMELINE_INPUT.min), Number(this.TIMELINE_INPUT.max)],
+        [timelineBox.left + this.HANDLE_WIDTH / 2, timelineBox.right - this.HANDLE_WIDTH / 2]
+      );
+      let contentX = windowX - contentBox.left;
+      this.TIMELINE_LABEL.style.left = contentX.toString() + "px";
+    }
+  }
 
   /** Called every 15ms (regardless of the visible tab). */
   private customPeriodic() {
@@ -268,7 +373,7 @@ export default abstract class TimelineVizController implements TabController {
     let selectionMode = window.selection.getMode();
     let hoveredTime = window.selection.getHoveredTime();
     let selectedTime = window.selection.getSelectedTime();
-    if (selectionMode == SelectionMode.Playback || selectionMode == SelectionMode.Locked) {
+    if (selectionMode === SelectionMode.Playback || selectionMode === SelectionMode.Locked) {
       time = selectedTime as number;
     } else if (hoveredTime !== null) {
       time = hoveredTime;
@@ -277,16 +382,18 @@ export default abstract class TimelineVizController implements TabController {
     } else {
       time = range[0];
     }
+    let liveTime = window.selection.getCurrentLiveTime();
+    if (liveTime !== null) {
+      range[1] = liveTime;
+    }
 
     // Render timeline sections
     while (this.TIMELINE_MARKER_CONTAINER.firstChild) {
       this.TIMELINE_MARKER_CONTAINER.removeChild(this.TIMELINE_MARKER_CONTAINER.firstChild);
     }
-    let isLocked = window.selection.getMode() == SelectionMode.Locked;
-    if (isLocked) range[1] = selectedTime as number;
     this.TIMELINE_INPUT.min = range[0].toString();
     this.TIMELINE_INPUT.max = range[1].toString();
-    this.TIMELINE_INPUT.disabled = isLocked;
+    this.TIMELINE_INPUT.disabled = window.selection.getMode() === SelectionMode.Locked;
 
     let enabledData = getEnabledData(window.log);
     if (enabledData) {
@@ -294,9 +401,16 @@ export default abstract class TimelineVizController implements TabController {
         if (enabledData.values[i]) {
           let div = document.createElement("div");
           this.TIMELINE_MARKER_CONTAINER.appendChild(div);
-          let leftPercent = ((enabledData.timestamps[i] - range[0]) / (range[1] - range[0])) * 100;
-          let nextTime = i == enabledData.values.length - 1 ? range[1] : enabledData.timestamps[i + 1];
-          let widthPercent = ((nextTime - enabledData.timestamps[i]) / (range[1] - range[0])) * 100;
+          let nextTime = i === enabledData.values.length - 1 ? range[1] : enabledData.timestamps[i + 1];
+          let marginPercent = (this.HANDLE_WIDTH / 2 / this.TIMELINE_MARKER_CONTAINER.clientWidth) * 100;
+          let leftPercent = scaleValue(enabledData.timestamps[i], range, [i === 0 ? 0 : marginPercent, 100]);
+          let rightPercent = scaleValue(nextTime, range, [
+            0,
+            100 - (i === enabledData.values.length - 1 ? 0 : marginPercent)
+          ]);
+          leftPercent = clampValue(leftPercent, 0, 100);
+          rightPercent = clampValue(rightPercent, 0, 100);
+          let widthPercent = rightPercent - leftPercent;
           div.style.left = leftPercent.toString() + "%";
           div.style.width = widthPercent.toString() + "%";
         }
@@ -309,6 +423,14 @@ export default abstract class TimelineVizController implements TabController {
     } else {
       this.TIMELINE_INPUT.value = range[0].toString();
     }
+
+    // Update timeline label
+    let labelNumber = Math.round(time * 10) / 10;
+    let labelString = labelNumber.toString();
+    if (labelNumber % 1 === 0) {
+      labelString += ".0";
+    }
+    this.TIMELINE_LABEL.innerText = labelString + "s";
 
     // Update content height
     this.CONTENT.style.setProperty(
@@ -329,12 +451,12 @@ export default abstract class TimelineVizController implements TabController {
   }
 
   /** Returns the list of selected fields. */
-  protected getFields(): (string | null)[] {
+  protected getFields() {
     return this.fields;
   }
 
   /** Returns the list of selected fields from lists. */
-  protected getListFields(): { type: string; key: string }[][] {
+  protected getListFields() {
     return this.listFields;
   }
 
@@ -343,6 +465,9 @@ export default abstract class TimelineVizController implements TabController {
 
   /** Updates the set of selected options. */
   abstract set options(options: { [id: string]: any });
+
+  /** Notify that the set of assets was updated. */
+  abstract newAssets(): void;
 
   /**
    * Returns the list of fields currently being displayed. This is

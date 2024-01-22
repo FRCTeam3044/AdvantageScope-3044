@@ -159,14 +159,20 @@ export class WPILOGEncoderRecord {
 
   /** Encodes an integer using the fewest necessary bytes. */
   private encodeInteger(int: number): Uint8Array {
-    int = Math.floor(int);
-    if (int == 0) return new Uint8Array(1);
-    let length = Math.floor(Math.log(int) / Math.log(256)) + 1;
-    let array = new Uint8Array(length);
-    for (let i = 0; i < length; i++) {
-      array[i] = (int >> (i * 8)) & 0xff;
+    let array = new Uint8Array(8);
+    let dataView = new DataView(array.buffer);
+    dataView.setBigInt64(0, BigInt(Math.floor(int)), true);
+    for (let i = 7; i > 0; i--) {
+      if (array[i] !== 0) {
+        return array.slice(0, i + 1);
+      }
     }
-    return array;
+    return array.slice(0, 1);
+  }
+
+  /** Returns the timestamp in microseconds. */
+  getTimestamp() {
+    return this.timestamp;
   }
 
   /** Encodes the full contents of this record and returns the result. */
@@ -176,9 +182,9 @@ export class WPILOGEncoderRecord {
     let payloadSizeData = this.encodeInteger(this.data.length);
     let timestampData = this.encodeInteger(this.timestamp);
     let lengthBitfield = 0;
-    lengthBitfield |= entryData.length - 1;
-    lengthBitfield |= (payloadSizeData.length - 1) << 2;
-    lengthBitfield |= (timestampData.length - 1) << 4;
+    lengthBitfield |= (entryData.length - 1) & 0x3;
+    lengthBitfield |= ((payloadSizeData.length - 1) & 0x3) << 2;
+    lengthBitfield |= ((timestampData.length - 1) & 0x7) << 4;
 
     // Combine to single array
     let array = new Uint8Array(1 + entryData.length + payloadSizeData.length + timestampData.length + this.data.length);
@@ -207,9 +213,10 @@ export class WPILOGEncoder {
   }
 
   /** Encodes the full data log. */
-  getEncoded(): Uint8Array {
+  getEncoded(sortByTimestamp = false): Uint8Array {
     // Encode all records and header data
-    let encodedRecords = this.records.map((record) => record.getEncoded());
+    let records = sortByTimestamp ? this.records.sort((a, b) => a.getTimestamp() - b.getTimestamp()) : this.records;
+    let encodedRecords = records.map((record) => record.getEncoded());
     let totalRecordLength = encodedRecords.reduce((previous, current) => previous + current.length, 0);
     let encodedHeader = TEXT_ENCODER.encode(HEADER_STRING);
     let encodedExtraHeader = TEXT_ENCODER.encode(this.extraHeader);

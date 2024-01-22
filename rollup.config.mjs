@@ -1,37 +1,102 @@
 import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
+import replace from "@rollup/plugin-replace";
 import typescript from "@rollup/plugin-typescript";
+import fs from "fs";
 import cleanup from "rollup-plugin-cleanup";
+import replaceRegEx from "rollup-plugin-re";
 
-const bundle = (input, output, external = []) => ({
-  input: "src/" + input,
-  output: {
-    file: "bundles/" + output,
-    format: "cjs"
-  },
-  plugins: [typescript(), nodeResolve(), commonjs(), cleanup()],
-  external: external
-});
+function bundle(input, output, isMain, external = []) {
+  return {
+    input: "src/" + input,
+    output: {
+      file: "bundles/" + output,
+      format: isMain ? "cjs" : "es"
+    },
+    context: "this",
+    external: external,
+    plugins: [
+      typescript(),
+      nodeResolve(),
+      commonjs(),
+      cleanup(),
+      json(),
+      replace({
+        preventAssignment: true,
+        values: {
+          __distributor__: "FRC3044",
+          __build_date__: new Date().toLocaleString("en-US", {
+            timeZone: "UTC",
+            hour12: false,
+            year: "numeric",
+            month: "numeric",
+            day: "numeric",
+            hour: "numeric",
+            minute: "numeric",
+            second: "numeric",
+            timeZoneName: "short"
+          }),
+          __copyright__: JSON.parse(
+            fs.readFileSync("package.json", {
+              encoding: "utf-8"
+            })
+          ).build.copyright
+        }
+      }),
+      replaceRegEx({
+        patterns: [
+          // Remove unused eval in protobufjs
+          // https://github.com/protobufjs/protobuf.js/issues/593
+          {
+            test: /eval.*\(moduleName\);/g,
+            replace: "undefined;"
+          }
+        ]
+      })
+    ],
+    onwarn(message, warn) {
+      // Hide warnings about protobufjs circular dependencies
+      // https://github.com/protobufjs/protobuf.js/issues/1402
+      if (message.code === "CIRCULAR_DEPENDENCY") return;
+      warn(message);
+    }
+  };
+}
 
 const mainBundles = [
-  bundle("main/main.ts", "main.js", ["electron", "electron-fetch", "fs", "jsonfile", "net", "os", "path", "ssh2"]),
-  bundle("preload.ts", "preload.js", ["electron"])
+  bundle("main/main.ts", "main.js", true, [
+    "electron",
+    "electron-fetch",
+    "fs",
+    "jsonfile",
+    "net",
+    "os",
+    "path",
+    "ssh2",
+    "download",
+    "ytdl-core",
+    "tesseract.js"
+  ]),
+  bundle("preload.ts", "preload.js", true, ["electron"])
 ];
-const largeRendererBundles = [bundle("hub/hub.ts", "hub.js"), bundle("satellite.ts", "satellite.js")];
-const tabEditingBundle = [bundle("hub/hub.ts", "hub.js")];
+const largeRendererBundles = [bundle("hub/hub.ts", "hub.js", false), bundle("satellite.ts", "satellite.js", false)];
+const tabEditingBundle = [bundle("hub/hub.ts", "hub.js", false)];
 const smallRendererBundles = [
-  bundle("editRange.ts", "editRange.js"),
-  bundle("unitConversion.ts", "unitConversion.js"),
-  bundle("renameTab.ts", "renameTab.js"),
-  bundle("export.ts", "export.js"),
-  bundle("download.ts", "download.js"),
-  bundle("preferences.ts", "preferences.js")
+  bundle("editRange.ts", "editRange.js", false),
+  bundle("unitConversion.ts", "unitConversion.js", false),
+  bundle("renameTab.ts", "renameTab.js", false),
+  bundle("editFov.ts", "editFov.js", false),
+  bundle("export.ts", "export.js", false),
+  bundle("download.ts", "download.js", false),
+  bundle("preferences.ts", "preferences.js", false),
+  bundle("licenses.ts", "licenses.js", false)
 ];
 const workerBundles = [
-  bundle("hub/dataSources/rlogWorker.ts", "hub$rlogWorker.js"),
-  bundle("hub/dataSources/wpilogWorker.ts", "hub$wpilogWorker.js"),
-  bundle("hub/dataSources/dsLogWorker.ts", "hub$dsLogWorker.js"),
-  bundle("hub/exportWorker.ts", "hub$exportWorker.js")
+  bundle("hub/dataSources/rlog/rlogWorker.ts", "hub$rlogWorker.js", false),
+  bundle("hub/dataSources/wpilog/wpilogWorker.ts", "hub$wpilogWorker.js", false),
+  bundle("hub/dataSources/dslog/dsLogWorker.ts", "hub$dsLogWorker.js", false),
+  bundle("hub/exportWorker.ts", "hub$exportWorker.js", false)
 ];
 
 export default (cliArgs) => {

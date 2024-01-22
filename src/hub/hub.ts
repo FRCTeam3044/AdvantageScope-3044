@@ -1,15 +1,20 @@
-import { Config3d_Rotation, FRCData } from "../shared/FRCData";
+import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
 import { HubState } from "../shared/HubState";
 import { SIM_ADDRESS, USB_ADDRESS } from "../shared/IPAddresses";
 import Log from "../shared/log/Log";
-import { getEnabledData } from "../shared/log/LogUtil";
+import { AKIT_TIMESTAMP_KEYS } from "../shared/log/LogUtil";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
-import { htmlEncode } from "../shared/util";
+import { clampValue, htmlEncode, scaleValue } from "../shared/util";
 import { HistoricalDataSource, HistoricalDataSourceStatus } from "./dataSources/HistoricalDataSource";
 import { LiveDataSource, LiveDataSourceStatus } from "./dataSources/LiveDataSource";
-import NT4Source from "./dataSources/NT4Source";
-import RLOGServerSource from "./dataSources/RLOGServerSource";
+import LiveDataTuner from "./dataSources/LiveDataTuner";
+import loadZebra from "./dataSources/LoadZebra";
+import { NT4Publisher, NT4PublisherStatus } from "./dataSources/nt4/NT4Publisher";
+import NT4Source from "./dataSources/nt4/NT4Source";
+import PathPlannerSource from "./dataSources/PathPlannerSource";
+import PhoenixDiagnosticsSource from "./dataSources/PhoenixDiagnosticsSource";
+import RLOGServerSource from "./dataSources/rlog/RLOGServerSource";
 import Selection from "./Selection";
 import Sidebar from "./Sidebar";
 import Tabs from "./Tabs";
@@ -24,44 +29,50 @@ declare global {
   interface Window {
     log: Log;
     preferences: Preferences | null;
-    frcData: FRCData | null;
+    assets: AdvantageScopeAssets | null;
     platform: string;
     platformRelease: string;
     appVersion: string;
     isFullscreen: boolean;
     isFocused: boolean;
     isBattery: boolean;
+    fps: boolean;
 
     selection: Selection;
     sidebar: Sidebar;
     tabs: Tabs;
+    tuner: LiveDataTuner | null;
     messagePort: MessagePort | null;
     setNt4: (topic: string, value: any) => void;
     isConnected: () => boolean;
     sendMainMessage: (name: string, data?: any) => void;
     startDrag: (x: number, y: number, offsetX: number, offsetY: number, data: any) => void;
     writeOxConfig(deployDir: string, timestamp: string, config: string): void;
-
-    override3dRobotConfig: (title: string, rotations: Config3d_Rotation[], position: [number, number, number]) => void;
   }
 }
 window.log = new Log();
 window.preferences = null;
-window.frcData = null;
+window.assets = null;
 window.platform = "";
 window.platformRelease = "";
 window.isFullscreen = false;
 window.isFocused = true;
 window.isBattery = false;
+window.fps = false;
 
 window.selection = new Selection();
 window.sidebar = new Sidebar();
 window.tabs = new Tabs();
+window.tuner = null;
 window.messagePort = null;
 
-let historicalSource: HistoricalDataSource | null;
-let liveSource: LiveDataSource | null;
+let historicalSource: HistoricalDataSource | null = null;
+let liveSource: LiveDataSource | null = null;
+let publisher: NT4Publisher | null = null;
+let isExporting = false;
 let logPath: string | null = null;
+let logFriendlyName: string | null = null;
+let liveActive = false;
 let liveConnected = false;
 
 let dragActive = false;
@@ -80,55 +91,32 @@ function setWindowTitle(name: string, status?: string) {
   document.getElementsByClassName("title-bar-text")[0].innerHTML = title;
 }
 
-function setLoading(active: boolean) {
-  if (active) {
-    document.getElementsByClassName("loading-glow")[0].classList.add("active");
-  } else {
-    document.getElementsByClassName("loading-glow")[0].classList.remove("active");
+/** Shows or hides the loading indicator and updates progress. Pass "null" to disable loading indicator. */
+function setLoading(progress: number | null) {
+  let showLoadingGlowProperty = progress !== null ? "1" : "0";
+  if (document.documentElement.style.getPropertyValue("--show-loading-glow") !== showLoadingGlowProperty) {
+    document.documentElement.style.setProperty("--show-loading-glow", showLoadingGlowProperty);
+  }
+  if (progress !== null) {
+    document.documentElement.style.setProperty("--loading-glow-progress", progress.toString());
   }
 }
 
 function updateFancyWindow() {
   // Using fancy title bar?
-  if (window.platform == "darwin" && Number(window.platformRelease.split(".")[0]) >= 20 && !window.isFullscreen) {
+  if (window.platform === "darwin" && Number(window.platformRelease.split(".")[0]) >= 20 && !window.isFullscreen) {
     document.body.classList.add("fancy-title-bar");
   } else {
     document.body.classList.remove("fancy-title-bar");
   }
 
   // Using fancy sidebar?
-  if (window.platform == "darwin") {
+  if (window.platform === "darwin") {
     document.body.classList.add("fancy-side-bar");
   } else {
     document.body.classList.remove("fancy-side-bar");
   }
 }
-
-// FRC DATA OVERRIDE
-
-window.override3dRobotConfig = (title, rotations, position) => {
-  if (!window.frcData) {
-    console.error("FRC data not loaded yet.");
-    return;
-  }
-  let index = window.frcData.robots.findIndex((robot) => robot.title == title);
-  if (index == -1) {
-    console.error(
-      'Could not find robot "' +
-        title +
-        '"\n\nCheck that your config files have the following names: "Robot_' +
-        title +
-        '.json" and "Robot_' +
-        title +
-        '.glb"'
-    );
-    return;
-  }
-  window.frcData.robots[index].rotations = rotations;
-  window.frcData.robots[index].position = position;
-};
-
-// Set Nt4 values
 
 window.setNt4 = (topic: string, value: any) => {
   if (liveSource instanceof NT4Source) {
@@ -225,76 +213,81 @@ window.addEventListener("touchend", () => {
   dragEnd();
 });
 
+// FPS MEASUREMENT
+
+const fpsDiv = document.getElementsByClassName("fps")[0] as HTMLElement;
+const sampleLength = 10;
+let frameTimes: number[] = [];
+let periodic = () => {
+  frameTimes.push(window.performance.now());
+  while (frameTimes.length > sampleLength) {
+    frameTimes.shift();
+  }
+  let fps = 0;
+  if (frameTimes.length > 1) {
+    let avgFrameTime = (frameTimes[frameTimes.length - 1] - frameTimes[0]) / (frameTimes.length - 1);
+    fps = 1000 / avgFrameTime;
+  }
+  fpsDiv.hidden = !window.fps;
+  if (window.fps) {
+    fpsDiv.innerText = "FPS: " + fps.toFixed(1);
+  }
+  window.requestAnimationFrame(periodic);
+};
+window.requestAnimationFrame(periodic);
+
 // DATA SOURCE HANDLING
 
 /** Connects to a historical data source. */
-function startHistorical(path: string, shouldMerge: boolean = false) {
+function startHistorical(paths: string[]) {
   historicalSource?.stop();
   liveSource?.stop();
+  window.tuner = null;
+  liveActive = false;
+  setLoading(null);
 
   historicalSource = new HistoricalDataSource();
   historicalSource.openFile(
-    path,
+    paths,
     (status: HistoricalDataSourceStatus) => {
-      let components = path.split(window.platform == "win32" ? "\\" : "/");
-      let friendlyName = components[components.length - 1];
+      if (paths.length === 1) {
+        let components = paths[0].split(window.platform === "win32" ? "\\" : "/");
+        logFriendlyName = components[components.length - 1];
+      } else {
+        logFriendlyName = paths.length.toString() + " Log Files";
+      }
       switch (status) {
         case HistoricalDataSourceStatus.Reading:
         case HistoricalDataSourceStatus.Decoding:
-          if (!shouldMerge) setWindowTitle(friendlyName, "Loading");
-          setLoading(true);
+          setWindowTitle(logFriendlyName, "Loading");
           break;
         case HistoricalDataSourceStatus.Ready:
-          if (!shouldMerge) setWindowTitle(friendlyName);
-          setLoading(false);
+          setWindowTitle(logFriendlyName);
+          setLoading(null);
           break;
         case HistoricalDataSourceStatus.Error:
-          if (!shouldMerge) setWindowTitle(friendlyName, "Error");
-          setLoading(false);
+          setWindowTitle(logFriendlyName, "Error");
+          setLoading(null);
+          let message =
+            "There was a problem while reading the log file" + (paths.length === 1 ? "" : "s") + ". Please try again.";
+          if (historicalSource && historicalSource.getCustomError() !== null) {
+            message = historicalSource.getCustomError()!;
+          }
           window.sendMainMessage("error", {
-            title: "Failed to open log",
-            content: "There was a problem while reading the log file. Please try again."
+            title: "Failed to open log" + (paths.length === 1 ? "" : "s"),
+            content: message
           });
           break;
         case HistoricalDataSourceStatus.Stopped:
-          setLoading(false);
           break;
       }
     },
+    (progress: number) => {
+      setLoading(progress);
+    },
     (log: Log) => {
-      if (shouldMerge && window.log.getFieldKeys().length > 0) {
-        // Check for field conflicts
-        let newFields = log.getFieldKeys();
-        let canMerge = true;
-        window.log.getFieldKeys().forEach((key) => {
-          if (newFields.includes(key)) canMerge = false;
-        });
-        if (!canMerge) {
-          window.sendMainMessage("error", {
-            title: "Failed to merge logs",
-            content:
-              "The logs contain conflicting fields. Merging is only possible when the logged fields don't overlap."
-          });
-          return;
-        }
-
-        // Merge based on first enable
-        let currentFirstEnable = 0;
-        let newFirstEnabled = 0;
-        let currentEnabledData = getEnabledData(window.log);
-        let newEnabledData = getEnabledData(log);
-        if (currentEnabledData && currentEnabledData.values.includes(true)) {
-          currentFirstEnable = currentEnabledData.timestamps[currentEnabledData.values.indexOf(true)];
-        }
-        if (newEnabledData && newEnabledData.values.includes(true)) {
-          newFirstEnabled = newEnabledData.timestamps[newEnabledData.values.indexOf(true)];
-        }
-        window.log = Log.mergeLogs(window.log, log, currentFirstEnable - newFirstEnabled);
-      } else {
-        window.log = log;
-        logPath = path;
-      }
-
+      window.log = log;
+      logPath = paths[0];
       liveConnected = false;
       window.sidebar.refresh();
       window.tabs.refresh();
@@ -306,6 +299,9 @@ function startHistorical(path: string, shouldMerge: boolean = false) {
 function startLive(isSim: boolean) {
   historicalSource?.stop();
   liveSource?.stop();
+  publisher?.stop();
+  liveActive = true;
+  setLoading(null);
 
   if (!window.preferences) return;
   switch (window.preferences.liveMode) {
@@ -314,6 +310,12 @@ function startLive(isSim: boolean) {
       break;
     case "nt4-akit":
       liveSource = new NT4Source(true);
+      break;
+    case "phoenix":
+      liveSource = new PhoenixDiagnosticsSource();
+      break;
+    case "pathplanner":
+      liveSource = new PathPlannerSource();
       break;
     case "rlog":
       liveSource = new RLOGServerSource();
@@ -351,7 +353,7 @@ function startLive(isSim: boolean) {
           break;
       }
 
-      if (status != LiveDataSourceStatus.Active) {
+      if (status !== LiveDataSourceStatus.Active) {
         window.selection.setLiveDisconnected();
       }
     },
@@ -364,6 +366,7 @@ function startLive(isSim: boolean) {
       window.tabs.refresh();
     }
   );
+  window.tuner = liveSource.getTuner();
 }
 
 // File dropped on window
@@ -375,9 +378,12 @@ document.addEventListener("drop", (event) => {
   event.stopPropagation();
 
   if (event.dataTransfer) {
+    let files: string[] = [];
     for (const file of event.dataTransfer.files) {
-      startHistorical(file.path);
-      return;
+      files.push(file.path);
+    }
+    if (files.length > 0) {
+      startHistorical(files);
     }
   }
 });
@@ -385,14 +391,14 @@ document.addEventListener("drop", (event) => {
 // MAIN MESSAGE HANDLING
 
 window.sendMainMessage = (name: string, data?: any) => {
-  if (window.messagePort != null) {
+  if (window.messagePort !== null) {
     let message: NamedMessage = { name: name, data: data };
     window.messagePort.postMessage(message);
   }
 };
 
 window.addEventListener("message", (event) => {
-  if (event.source == window && event.data == "port") {
+  if (event.source === window && event.data === "port") {
     window.messagePort = event.ports[0];
     window.messagePort.onmessage = (event) => {
       let message: NamedMessage = event.data;
@@ -404,6 +410,23 @@ window.addEventListener("message", (event) => {
 UPDATE_BUTTON.addEventListener("click", () => {
   window.sendMainMessage("prompt-update");
 });
+
+// Update touch bar slider position
+setInterval(() => {
+  if (window.platform === "darwin") {
+    let range = window.log.getTimestampRange();
+    let liveTime = window.selection.getCurrentLiveTime();
+    if (liveTime !== null) {
+      range[1] = liveTime;
+    }
+    let selectedTime = window.selection.getSelectedTime();
+    if (selectedTime === null) {
+      selectedTime = range[0];
+    }
+    let timePercent = clampValue(scaleValue(selectedTime, range, [0, 1]), 0, 1);
+    window.sendMainMessage("update-touch-bar-slider", timePercent);
+  }
+}, 1000 / 60);
 
 function handleMainMessage(message: NamedMessage) {
   switch (message.name) {
@@ -451,8 +474,11 @@ function handleMainMessage(message: NamedMessage) {
       window.preferences = message.data;
       break;
 
-    case "set-frc-data":
-      window.frcData = message.data;
+    case "set-assets":
+      if (JSON.stringify(window.assets) !== JSON.stringify(message.data)) {
+        window.assets = message.data;
+        window.tabs.newAssets();
+      }
       break;
 
     case "show-update-button":
@@ -461,27 +487,89 @@ function handleMainMessage(message: NamedMessage) {
       break;
 
     case "historical-data":
-      if (historicalSource != null) {
+      if (historicalSource !== null) {
         historicalSource.handleMainMessage(message.data);
       }
       break;
 
-    case "live-rlog-data":
-      if (liveSource != null) {
+    case "live-data":
+      if (liveSource !== null) {
         liveSource.handleMainMessage(message.data);
       }
       break;
 
-    case "open-file":
-      startHistorical(message.data);
-      break;
-
-    case "open-file-merge":
-      startHistorical(message.data, true);
+    case "open-files":
+      if (isExporting) {
+        window.sendMainMessage("error", {
+          title: "Cannot open file",
+          content: "Please wait for the export to finish, then try again."
+        });
+      } else {
+        startHistorical(message.data);
+      }
       break;
 
     case "start-live":
-      startLive(message.data);
+      if (isExporting) {
+        window.sendMainMessage("error", {
+          title: "Cannot connect",
+          content: "Please wait for the export to finish, then try again."
+        });
+      } else {
+        startLive(message.data);
+      }
+      break;
+
+    case "start-publish":
+      if (liveActive) {
+        window.sendMainMessage("error", {
+          title: "Cannot publish",
+          content: "Publishing is is not allowed from a live source."
+        });
+      } else if (!("NT" in window.log.getFieldTree())) {
+        window.sendMainMessage("error", {
+          title: "Cannot publish",
+          content: "Please open a log file with NetworkTables data, then try again."
+        });
+      } else {
+        publisher?.stop();
+        publisher = new NT4Publisher(message.data, (status) => {
+          if (logFriendlyName === null) return;
+          switch (status) {
+            case NT4PublisherStatus.Connecting:
+              setWindowTitle(logFriendlyName, "Searching");
+              break;
+            case NT4PublisherStatus.Active:
+              setWindowTitle(logFriendlyName, "Publishing");
+              break;
+            case NT4PublisherStatus.Stopped:
+              setWindowTitle(logFriendlyName);
+              break;
+          }
+        });
+      }
+      break;
+
+    case "stop-publish":
+      publisher?.stop();
+      break;
+
+    case "load-zebra":
+      if (liveActive) {
+        window.sendMainMessage("error", {
+          title: "Cannot load Zebra data",
+          content: "Loading Zebra data is not allowed while connected to a live source."
+        });
+      } else {
+        setLoading(1);
+        loadZebra()
+          .then(() => {
+            setLoading(null);
+          })
+          .catch(() => {
+            setLoading(null);
+          });
+      }
       break;
 
     case "set-playback-speed":
@@ -508,6 +596,10 @@ function handleMainMessage(message: NamedMessage) {
       window.tabs.renameTab(message.data.index, message.data.name);
       break;
 
+    case "add-discrete-enabled":
+      window.tabs.addDiscreteEnabled();
+      break;
+
     case "edit-axis":
       window.tabs.editAxis(message.data.legend, message.data.lockedRange, message.data.unitConversion);
       break;
@@ -520,30 +612,56 @@ function handleMainMessage(message: NamedMessage) {
       window.tabs.set3DCamera(message.data);
       break;
 
+    case "edit-fov":
+      window.tabs.setFov(message.data);
+      break;
+
     case "video-data":
       window.tabs.processVideoData(message.data);
       break;
 
     case "start-export":
-      if (logPath != null || liveConnected) {
-        window.sendMainMessage("prompt-export", {
-          path: logPath,
-          incompleteWarning: liveConnected && window.preferences?.liveSubscribeMode === "low-bandwidth"
+      if (isExporting) {
+        window.sendMainMessage("error", {
+          title: "Cannot export data",
+          content: "Please wait for the previous export to finish, then try again."
         });
-      } else {
+      } else if (logPath === null && !liveConnected) {
         window.sendMainMessage("error", {
           title: "Cannot export data",
           content: "Please open a log file or connect to a live source, then try again."
         });
+      } else {
+        isExporting = true;
+        const incompleteWarning =
+          liveConnected &&
+          (window.preferences?.liveSubscribeMode === "low-bandwidth" || window.preferences?.liveMode === "phoenix");
+        const supportsAkit = window.log.getFieldKeys().find((key) => AKIT_TIMESTAMP_KEYS.includes(key)) !== undefined;
+        window.sendMainMessage("prompt-export", {
+          path: logPath,
+          incompleteWarning: incompleteWarning,
+          supportsAkit: supportsAkit
+        });
       }
       break;
 
+    case "cancel-export":
+      isExporting = false;
+      break;
+
     case "prepare-export":
-      setLoading(true);
-      WorkerManager.request("../bundles/hub$exportWorker.js", {
-        options: message.data.options,
-        log: window.log.toSerialized()
-      })
+      setLoading(null);
+      historicalSource?.stop();
+      WorkerManager.request(
+        "../bundles/hub$exportWorker.js",
+        {
+          options: message.data.options,
+          log: window.log.toSerialized()
+        },
+        (progress: number) => {
+          setLoading(progress);
+        }
+      )
         .then((content) => {
           window.sendMainMessage("write-export", {
             path: message.data.path,
@@ -555,11 +673,24 @@ function handleMainMessage(message: NamedMessage) {
             title: "Failed to export data",
             content: "There was a problem while converting to the export format. Please try again."
           });
+          setLoading(null);
+        })
+        .finally(() => {
+          isExporting = false;
         });
       break;
 
     case "finish-export":
-      setLoading(false);
+      setLoading(null);
+      break;
+
+    case "update-touch-bar-slider":
+      let range = window.log.getTimestampRange();
+      let liveTime = window.selection.getCurrentLiveTime();
+      if (liveTime !== null) {
+        range[1] = liveTime;
+      }
+      window.selection.setSelectedTime(scaleValue(message.data, [0, 1], range));
       break;
 
     case "set-deploy-dir":

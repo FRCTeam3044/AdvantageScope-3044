@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="UTF-8" />
@@ -21,6 +21,7 @@
               <option value="csv-table">CSV (Table)</option>
               <option value="csv-list">CSV (List)</option>
               <option value="wpilog">WPILOG</option>
+              <option value="mcap">MCAP</option>
             </select>
           </td>
         </tr>
@@ -28,8 +29,9 @@
           <td class="label">Timestamps</td>
           <td class="input" tabindex="-1">
             <select id="samplingMode">
-              <option value="all">All Changes</option>
-              <option value="fixed">Fixed</option>
+              <option value="changes">All Changes</option>
+              <option value="fixed">Fixed Period</option>
+              <option value="akit">AdvantageKit Cycles</option>
             </select>
           </td>
         </tr>
@@ -43,6 +45,15 @@
           <td class="label">Prefixes</td>
           <td class="input" tabindex="-1">
             <input type="text" id="prefixes" />
+          </td>
+        </tr>
+        <tr>
+          <td class="label">Field Set</td>
+          <td class="input" tabindex="-1">
+            <select id="includeGenerated">
+              <option value="true">Include Generated</option>
+              <option value="false">Original Only</option>
+            </select>
           </td>
         </tr>
       </tbody>

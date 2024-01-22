@@ -11,7 +11,6 @@ These links cover the basics of getting around in AdvantageScope and and accessi
 - [App Navigation](/docs/NAVIGATION.md)
 - [Opening/Downloading Log Files](/docs/OPEN-FILE.md)
 - [Connecting to Live Sources](/docs/OPEN-LIVE.md)
-- [Exporting Log Data](/docs/EXPORT.md)
 
 ## Tab Information
 
@@ -26,20 +25,30 @@ AdvantageScope supports many ways to view and analyze data, organized into tabs.
 - 🎬 [Video](/docs/tabs/VIDEO.md)
 - 🎮 [Joysticks](/docs/tabs/JOYSTICKS.md)
 - 🦀 [Swerve](/docs/tabs/SWERVE.md)
-- 🦾 [Mechanism](/docs/tabs/MECHANISM.md)
+- ⚙️ [Mechanism](/docs/tabs/MECHANISM.md)
 - 🔵 [Points](/docs/tabs/POINTS.md)
 - 🔍 [Metadata](/docs/tabs/METADATA.md)
 - 🎛 [Tuner](/docs/tabs/TUNER.md)
 - 🛠️ [Config Editor](/docs/tabs/CONFIG-EDITOR.md)
 
-## Other Links
+## More Features
 
+- [Loading Zebra MotionWorks™ Data](/docs/ZEBRA.md)
+- [Unofficial REV-Compatible Logger](/docs/REV-LOGGING.md)
+- [PhotonVision Integration](/docs/PHOTONVISION.md)
+- [Exporting Log Data](/docs/EXPORT.md)
+- [Publishing NetworkTables Data](/docs/NT-PUBLISHING.md)
+- [Custom Assets](/docs/CUSTOM-ASSETS.md)
+- [Converting Onshape & STEP Files to glTF](/docs/GLTF-CONVERT.md)
+
+## External Links
+
+- [WPILib Documentation](https://docs.wpilib.org)
 - [AdvantageKit Documentation](https://github.com/Mechanical-Advantage/AdvantageKit/blob/main/README.md)
 - [AdvantageScope Repository](https://github.com/Mechanical-Advantage/AdvantageScope/)
 - [3044 AdvantageScope Repository](https://github.com/FRCTeam3044/AdvantageScope-3044/)
 - [OxConfig](https://github.com/FRCTeam3044/OxConfig/)
-- [Sample Log Data](https://drive.google.com/drive/folders/14Bbp10csQPjh2VcApNM07lwt2v77-z_I?usp=share_link) (6328 @ 2022 Championship)
-- [Custom Fields/Robots/Joysticks](/docs/CUSTOM-CONFIG.md)
-- [Converting Onshape & STEP Files to glTF](/docs/GLTF-CONVERT.md)
+- [Sample Log Data: 6328 @ 2023 Championship](https://drive.google.com/drive/folders/1nTfrXo5HNhGMoFqlJ_Y2eI2bKiRWK8t_?usp=share_link)
+- [Sample Log Data: 6328 @ 2022 Championship](https://drive.google.com/drive/folders/14Bbp10csQPjh2VcApNM07lwt2v77-z_I?usp=share_link)
 
 To submit a bug report or feature request, please visit our [GitHub issues](https://github.com/Mechanical-Advantage/AdvantageScope/issues) page.
