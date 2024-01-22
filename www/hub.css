@@ -1988,39 +1988,13 @@ table.metadata-table td.no-data {
   }
 }
 
-td.hybrid {
-  background-color: #777777;
-}
-
-td.hybrid.scored {
-  background-color: #ffffff;
-}
-
-td.cone {
-  background-color: #ffda1e5d;
-}
-
-td.cone.scored {
-  background-color: #ffda1e;
-}
-
-td.cube {
-  background-color: #aa00ff4d;
-}
-
-td.cube.scored {
-  background-color: #aa00ff;
-}
-
-td.active {
-  background-color: #00ff08 !important;
-}
-
 .column-right {
   float: right;
   margin-right: 4%;
   width: 30%;
   max-width: 35%;
+  height: calc(100% - min(200px, 30%) - 10px);
+  overflow-y: auto;
 }
 
 .config-editor h2 {
@@ -2216,6 +2190,14 @@ select {
 
 .deploy-dir {
   position: relative;
+  max-width: 100%;
+}
+
+.deploy-dir-path {
+  white-space: normal;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  font-family: monospace;
 }
 /* Style for the extra information */
 .extra-info {
