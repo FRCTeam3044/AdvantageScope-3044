@@ -83,7 +83,7 @@ export default class ConfigEditorController implements TabController {
       }
     } else {
       (this.FAILED_DEPLOY_WARNING.getElementsByClassName("warning-content")[0] as HTMLElement).innerText =
-        "Failed to write file: Deploy directory is missing or doesn't contain config.yml.";
+        "Failed to write file: Deploy directory is missing or doesn't contain config.json.";
       this.SUCCESS_WARNING.style.opacity = "0";
       this.SUCCESS_WARNING.style.display = "none";
       this.FAILED_DEPLOY_WARNING.style.display = "block";

@@ -206,8 +206,8 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       });
       break;
     case "write-oxconfig":
-      if (fs.existsSync(message.data.deployDir + "/config.yml")) {
-        fs.writeFile(message.data.deployDir + "/config.yml", message.data.config, (err) => {
+      if (fs.existsSync(message.data.deployDir + "/config.json")) {
+        fs.writeFile(message.data.deployDir + "/config.json", message.data.config, (err) => {
           if (err) {
             console.error(err);
             sendMessage(window, "write-oxconfig", "writeerror");
