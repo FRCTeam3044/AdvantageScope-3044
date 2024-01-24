@@ -517,6 +517,12 @@ export default class TunerController implements TabController {
       }
 
       input.addEventListener("change", () => {
+        if(["integer", "short", "long", "double", "float"].includes(type)){
+          // If not a number, ignore
+          if (input.value === "" || isNaN(parseFloat(input.value))) {
+            return;
+          }
+        }
         window.setNt4(
           "/OxConfig/ClassSetter",
           "single," + parameters[i][1] + "," + this.EDIT_MODE_DROPDOWN.value + "," + input.value
