@@ -2,7 +2,7 @@
 
 _[< Return to homepage](/docs/INDEX.md)_
 
-The tuner is designed to allow for easy viewing of PID Graphs (or really any graph) and easy, live editing of values. It is intended for use with [OxConfig](https://github.com/FRCTeam3044/OxConfig), and will automatically update its yaml files and controllers in real time.
+The tuner is designed to allow for easy viewing of PID Graphs (or really any graph) and easy, live editing of values. It is intended for use with [OxConfig](https://github.com/FRCTeam3044/OxConfig), and will automatically update its json files and controllers in real time.
 
 ---
 

@@ -2,7 +2,7 @@
 
 _[< Return to homepage](/docs/INDEX.md)_
 
-The config editor is designed to allow for easy viewing and editing of values used in the robot. It is intended for use with [OxConfig](https://github.com/FRCTeam3044/OxConfig), and will automatically update its yaml files and controllers in real time.
+The config editor is designed to allow for easy viewing and editing of values used in the robot. It is intended for use with [OxConfig](https://github.com/FRCTeam3044/OxConfig), and will automatically update its json files and controllers in real time.
 
 ---
 
@@ -22,7 +22,7 @@ After you are connected to a robot, real or sim, running the OxConfig framework 
 
 At the top of the page, is a search bar and a mode dropdown. The mode dropdown shows the mode the robot is currently in and allows you to change it, which will change the values the robot uses (**including for controllers from the tuner, the config editor and tuner modes are one and the same**) to the values stored for that mode. The search bar will allow you to narrow down the currently displayed parameters for easy editing.
 
-You will see a large table with Columns for the Parameter name, Comment, and values for all the different modes. Everything except the parameter name is editable and will be updated automatically in the yaml and immediatley in the robot code when you change it.
+You will see a large table with Columns for the Parameter name, Comment, and values for all the different modes. Everything except the parameter name is editable and will be updated automatically in the json and immediatley in the robot code when you change it.
 
 > Note: Values will not be sent to OxConfig until you press enter or click out of the table.
 
