@@ -353,6 +353,7 @@ export default class ConfigEditorController implements TabController {
       } else {
         valueRaw = input.value;
       }
+      if (valueRaw.length == 0) return;
       let value = valueRaw.replace(/<span class='highlighted'>/g, "").replace(/<\/span>/g, "");
       keySet.push(value);
     }
