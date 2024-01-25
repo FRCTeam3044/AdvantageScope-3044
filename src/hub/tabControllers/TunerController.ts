@@ -517,7 +517,7 @@ export default class TunerController implements TabController {
       }
 
       input.addEventListener("change", () => {
-        if(["integer", "short", "long", "double", "float"].includes(type)){
+        if (["integer", "short", "long", "double", "float"].includes(type)) {
           // If not a number, ignore
           if (input.value === "" || isNaN(parseFloat(input.value))) {
             return;
