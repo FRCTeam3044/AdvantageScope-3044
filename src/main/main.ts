@@ -2042,7 +2042,7 @@ function openPreferences(parentWindow: Electron.BrowserWindow) {
   }
 
   const width = 400;
-  const height = process.platform === "win32" ? 384 : 324; // "useContentSize" is broken on Windows when not resizable
+  const height = process.platform === "win32" ? 404 : 374; // "useContentSize" is broken on Windows when not resizable
   prefsWindow = new BrowserWindow({
     width: width,
     height: height,
@@ -2288,6 +2288,20 @@ app.whenReady().then(() => {
 
     if ("skipHootNonProWarning" in oldPrefs && typeof oldPrefs.skipHootNonProWarning === "boolean") {
       prefs.skipHootNonProWarning = oldPrefs.skipHootNonProWarning;
+    }
+
+    if ("clickToGoKey" in oldPrefs && typeof oldPrefs.clickToGoKey === "string") {
+      prefs.clickToGoKey = oldPrefs.clickToGoKey;
+    }
+
+    if (
+      "clickToGo" in oldPrefs &&
+      (oldPrefs.clickToGo === "none" ||
+        oldPrefs.clickToGo === "odometry" ||
+        oldPrefs.clickToGo === "3d" ||
+        oldPrefs.clickToGo === "both")
+    ) {
+      prefs.clickToGo = oldPrefs.clickToGo;
     }
     jsonfile.writeFileSync(PREFS_FILENAME, prefs);
     nativeTheme.themeSource = prefs.theme;

@@ -14,4 +14,6 @@ export default interface Preferences {
   skipHootNonProWarning: boolean;
   usb?: boolean;
   deployDirectory: string;
+  clickToGo: "none" | "odometry" | "3d" | "both";
+  clickToGoKey: string;
 }

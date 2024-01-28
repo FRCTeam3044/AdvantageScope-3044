@@ -12,6 +12,8 @@ const THREE_DIMENSION_MODE_BATTERY = document.getElementById("threeDimensionMode
 const TBA_API_KEY = document.getElementById("tbaApiKey") as HTMLInputElement;
 const EXIT_BUTTON = document.getElementById("exit") as HTMLInputElement;
 const CONFIRM_BUTTON = document.getElementById("confirm") as HTMLInputElement;
+const CLICK_TO_GO_MODE = document.getElementById("clickToGoMode") as HTMLInputElement;
+const CLICK_TO_GO_NT_KEY = document.getElementById("clickToGoNTKey") as HTMLInputElement;
 
 window.addEventListener("message", (event) => {
   if (event.source === window && event.data === "port") {
@@ -49,6 +51,8 @@ window.addEventListener("message", (event) => {
       THREE_DIMENSION_MODE_AC.value = oldPrefs.threeDimensionModeAc;
       THREE_DIMENSION_MODE_BATTERY.value = oldPrefs.threeDimensionModeBattery;
       TBA_API_KEY.value = oldPrefs.tbaApiKey;
+      CLICK_TO_GO_MODE.value = oldPrefs.clickToGo;
+      CLICK_TO_GO_NT_KEY.value = oldPrefs.clickToGoKey;
 
       // Close function
       function close(useNewPrefs: boolean) {
@@ -80,6 +84,12 @@ window.addEventListener("message", (event) => {
           if (THREE_DIMENSION_MODE_BATTERY.value === "standard") threeDimensionModeBattery = "standard";
           if (THREE_DIMENSION_MODE_BATTERY.value === "low-power") threeDimensionModeBattery = "low-power";
 
+          let clickToGo: "none" | "odometry" | "3d" | "both" = "none";
+          if (CLICK_TO_GO_MODE.value === "none") clickToGo = "none";
+          if (CLICK_TO_GO_MODE.value === "odometry") clickToGo = "odometry";
+          if (CLICK_TO_GO_MODE.value === "3d") clickToGo = "3d";
+          if (CLICK_TO_GO_MODE.value === "both") clickToGo = "both";
+
           let newPrefs: Preferences = {
             theme: theme,
             rioAddress: RIO_ADDRESS.value,
@@ -93,7 +103,9 @@ window.addEventListener("message", (event) => {
             threeDimensionModeBattery: threeDimensionModeBattery,
             tbaApiKey: TBA_API_KEY.value,
             deployDirectory: oldPrefs.deployDirectory,
-            skipHootNonProWarning: oldPrefs.skipHootNonProWarning
+            skipHootNonProWarning: oldPrefs.skipHootNonProWarning,
+            clickToGo: clickToGo,
+            clickToGoKey: CLICK_TO_GO_NT_KEY.value
           };
           messagePort.postMessage(newPrefs);
         } else {

@@ -34,7 +34,9 @@ export const DEFAULT_PREFS: Preferences = {
   threeDimensionModeBattery: "",
   tbaApiKey: "",
   deployDirectory: "",
-  skipHootNonProWarning: false
+  skipHootNonProWarning: false,
+  clickToGo: "none",
+  clickToGoKey: "NT:/SmartDashboard/ClickPosition"
 };
 
 // Live RLOG
