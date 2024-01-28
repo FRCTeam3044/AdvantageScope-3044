@@ -36,7 +36,7 @@ export const DEFAULT_PREFS: Preferences = {
   deployDirectory: "",
   skipHootNonProWarning: false,
   clickToGo: "none",
-  clickToGoKey: "NT:/SmartDashboard/ClickPosition"
+  clickToGoKey: "/SmartDashboard/ClickPosition"
 };
 
 // Live RLOG

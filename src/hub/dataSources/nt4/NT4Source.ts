@@ -354,6 +354,12 @@ export default class NT4Source extends LiveDataSource {
     }
   }
 
+  publishTopic(topic: string, type: string) {
+    if (this.client) {
+      this.client.publishTopic(topic, type);
+    }
+  }
+
   isConnected(): boolean {
     return this.status === LiveDataSourceStatus.Active;
   }

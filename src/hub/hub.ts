@@ -120,7 +120,11 @@ function updateFancyWindow() {
 
 window.setNt4 = (topic: string, value: any) => {
   if (liveSource instanceof NT4Source) {
-    liveSource.publishValue(topic, value);
+    try {
+      liveSource.publishValue(topic, value);
+    } catch (e) {
+      liveSource.publishTopic(topic, "double[]");
+    }
   }
 };
 

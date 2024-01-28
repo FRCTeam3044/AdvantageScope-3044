@@ -10,6 +10,8 @@ export default class ThreeDimensionVisualizerSwitching implements Visualizer {
   private visualizer: ThreeDimensionVisualizer | null = null;
 
   private lastMode: "cinematic" | "standard" | "low-power" | null = null;
+  private lastClickToGo: boolean | null = null;
+  private lastClickToGoKey: string | null = null;
   private lastCameraIndex: number | null = null;
   private lastFov: number | null = null;
 
@@ -35,17 +37,23 @@ export default class ThreeDimensionVisualizerSwitching implements Visualizer {
   render(command: any): number | null {
     // Get current mode
     let mode: "cinematic" | "standard" | "low-power" = "standard";
+    let clickToGo: boolean = false;
+    let clickToGoKey: string = "";
     if (window.preferences) {
       if (window.isBattery && window.preferences.threeDimensionModeBattery !== "") {
         mode = window.preferences.threeDimensionModeBattery;
       } else {
         mode = window.preferences.threeDimensionModeAc;
       }
+      clickToGo = window.preferences.clickToGo === "3d" || window.preferences.clickToGo === "both";
+      clickToGoKey = window.preferences.clickToGoKey;
     }
 
     // Recreate visualizer if necessary
-    if (mode !== this.lastMode) {
+    if (mode !== this.lastMode || clickToGo !== this.lastClickToGo || clickToGoKey !== this.lastClickToGoKey) {
       this.lastMode = mode;
+      this.lastClickToGo = clickToGo;
+      this.lastClickToGoKey = clickToGoKey;
       let cameraPositions: [THREE.Vector3, THREE.Vector3] | null = null;
       if (this.visualizer !== null) {
         cameraPositions = this.visualizer.cameraPositions;
@@ -69,7 +77,15 @@ export default class ThreeDimensionVisualizerSwitching implements Visualizer {
         this.annotationsDiv.replaceWith(newDiv);
         this.annotationsDiv = newDiv;
       }
-      this.visualizer = new ThreeDimensionVisualizer(mode, this.content, this.canvas, this.annotationsDiv, this.alert);
+      this.visualizer = new ThreeDimensionVisualizer(
+        mode,
+        this.content,
+        this.canvas,
+        this.annotationsDiv,
+        this.alert,
+        clickToGo,
+        clickToGoKey
+      );
       if (this.lastCameraIndex !== null) this.visualizer.set3DCamera(this.lastCameraIndex);
       if (this.lastFov !== null) this.visualizer.setFov(this.lastFov);
       if (cameraPositions !== null) this.visualizer.cameraPositions = cameraPositions;

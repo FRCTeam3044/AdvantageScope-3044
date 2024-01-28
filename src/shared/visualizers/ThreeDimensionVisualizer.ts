@@ -65,6 +65,7 @@ export default class ThreeDimensionVisualizer implements Visualizer {
 
   private stopped = false;
   private mode: "cinematic" | "standard" | "low-power";
+  private clickToGoKey: string;
   private content: HTMLElement;
   private canvas: HTMLCanvasElement;
   private annotationsDiv: HTMLElement;
@@ -76,6 +77,8 @@ export default class ThreeDimensionVisualizer implements Visualizer {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
+  private rayCaster: THREE.Raycaster | null = null;
+  private planeX: THREE.Plane | null = null;
   private textureLoader: THREE.TextureLoader;
   private wpilibCoordinateGroup: THREE.Group; // Rotated to match WPILib coordinates
   private wpilibFieldCoordinateGroup: THREE.Group; // Field coordinates (origin at driver stations and flipped based on alliance)
@@ -129,9 +132,12 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     content: HTMLElement,
     canvas: HTMLCanvasElement,
     annotationsDiv: HTMLElement,
-    alert: HTMLElement
+    alert: HTMLElement,
+    clickToGo: boolean,
+    clickToGoKey: string
   ) {
     this.mode = mode;
+    this.clickToGoKey = clickToGoKey;
     this.content = content;
     this.canvas = canvas;
     this.annotationsDiv = annotationsDiv;
@@ -198,6 +204,15 @@ export default class ThreeDimensionVisualizer implements Visualizer {
 
     // Reset camera and controls
     this.resetCamera();
+
+    if (clickToGo) {
+      this.rayCaster = new THREE.Raycaster();
+      // new plane facing up
+      this.planeX = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      addEventListener("click", (event) => {
+        this.getClicked3DPoint(event);
+      });
+    }
 
     // Add lights
     {
@@ -451,6 +466,27 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       window.requestAnimationFrame(periodic);
     };
     window.requestAnimationFrame(periodic);
+  }
+
+  getClicked3DPoint(evt: MouseEvent) {
+    if (this.rayCaster == null || this.planeX == null) return;
+    if (evt.button != 0) return;
+    if (evt.ctrlKey != true) return;
+    evt.preventDefault();
+    // Get mouse position
+    let rect = this.canvas.getBoundingClientRect();
+    let mousePosition = new THREE.Vector2();
+    mousePosition.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+    mousePosition.y = -(((evt.clientY - rect.top) / rect.height) * 2) + 1;
+
+    // Create a ray, point it from the camera to the mouse position, and find the intersection with a plane
+    var intersects = new THREE.Vector3();
+    this.rayCaster.setFromCamera(mousePosition, this.camera);
+    this.rayCaster.ray.intersectPlane(this.planeX, intersects);
+
+    console.log("Click at: " + [-(intersects.x - 8.25), intersects.z + 4]);
+    // sets selected position on field (right click) in WPI field relative values
+    window.setNt4(this.clickToGoKey, [-(intersects.x - 8.25), intersects.z + 4, -2]);
   }
 
   /** Switches the selected camera. */
