@@ -80,7 +80,8 @@ let advantageScopeAssets: AdvantageScopeAssets = {
   field2ds: [],
   field3ds: [],
   robots: [],
-  joysticks: []
+  joysticks: [],
+  loadFailures: []
 };
 
 // Live RLOG variables
@@ -141,7 +142,6 @@ function sendAllPreferences() {
 
 /** Sends the current set of assets to all windows. */
 function sendAssets() {
-  advantageScopeAssets = loadAssets();
   Object.values(satelliteWindows).forEach((windowCollection) => {
     windowCollection.forEach((window) => {
       if (!window.isDestroyed()) {
@@ -2010,8 +2010,11 @@ function createSatellite(parentWindow: Electron.BrowserWindow, uuid: string, typ
     port2.start();
     sendMessage(satellite, "set-assets", advantageScopeAssets);
     sendMessage(satellite, "set-type", type);
+    sendMessage(satellite, "set-battery", powerMonitor.isOnBatteryPower());
     sendAllPreferences();
   });
+  powerMonitor.on("on-ac", () => sendMessage(satellite, "set-battery", false));
+  powerMonitor.on("on-battery", () => sendMessage(satellite, "set-battery", true));
 
   if (!(uuid in satelliteWindows)) {
     satelliteWindows[uuid] = [];
