@@ -2295,3 +2295,13 @@ td input::-webkit-inner-spin-button {
   cursor: col-resize;
   z-index: 999;
 }
+
+#config-editor-firstline {
+  /* Keep it all on one line and scroll if it overflows */
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.deploy-path-cfg {
+  width: calc(100% - 170px);
+}

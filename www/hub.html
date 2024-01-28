@@ -885,17 +885,19 @@
           <div class="config-editor tab-content" id="tuning" hidden>
             <div id="config-editor-tab">
               <div id="config-editor-header">
-                <h2>Config Editor</h2>
-                <p class="deploy-dir">
-                  Deploy Directory
-                  <span class="question-icon">?</span>
-                  <span class="extra-info"
-                    >The config file is modified directly on the rio, which will be overwritten on code rebuild. To save
-                    locally to prevent this and for source control, you must select a deploy directory in File > Select
-                    Deploy Directory.</span
-                  >
-                  : <code class="deploy-dir-path">Not set</code>
-                </p>
+                <div id="config-editor-firstline">
+                  <h2>Config Editor</h2>
+                  <p class="deploy-dir deploy-path-cfg">
+                    Deploy Directory
+                    <span class="question-icon">?</span>
+                    <span class="extra-info"
+                      >The config file is modified directly on the rio, which will be overwritten on code rebuild. To
+                      save locally to prevent this and for source control, you must select a deploy directory in File >
+                      Select Deploy Directory.</span
+                    >
+                    : <code class="deploy-dir-path">Not set</code>
+                  </p>
+                </div>
                 <div class="warning-container">
                   <div class="warning">
                     <h3 class="warning-text">
