@@ -44,7 +44,7 @@ export default class ConfigEditorController implements TabController {
       this.search((target as HTMLInputElement).value);
     });
     this.MODE_DROPDOWN.addEventListener("change", (e: Event) => {
-      window.setNt4("/OxConfig/ModeSetter", (this.MODE_DROPDOWN as HTMLSelectElement).value);
+      window.setNt4("/OxConfig/ModeSetter", (this.MODE_DROPDOWN as HTMLSelectElement).value, "string");
     });
   }
   newAssets(): void {}
@@ -358,7 +358,7 @@ export default class ConfigEditorController implements TabController {
       keySet.push(value);
     }
 
-    window.setNt4("/OxConfig/KeySetter", keySet.join(","));
+    window.setNt4("/OxConfig/KeySetter", keySet.join(","), "string");
   }
 
   private loadModes() {

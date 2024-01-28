@@ -130,7 +130,7 @@ export default class TunerController implements TabController {
     });
 
     this.CUR_MODE_DROPDOWN.addEventListener("change", (e: Event) => {
-      window.setNt4("/OxConfig/ModeSetter", this.CUR_MODE_DROPDOWN.value);
+      window.setNt4("/OxConfig/ModeSetter", this.CUR_MODE_DROPDOWN.value, "string");
     });
 
     (content.getElementsByClassName("copy-one")[0] as HTMLButtonElement).addEventListener("click", () => {
@@ -250,11 +250,11 @@ export default class TunerController implements TabController {
   newAssets(): void {}
 
   confirmCopyAll(data: any) {
-    window.setNt4("/OxConfig/ClassSetter", `copyAll,${data.controller},${data.source}`);
+    window.setNt4("/OxConfig/ClassSetter", `copyAll,${data.controller},${data.source}`, "string");
   }
 
   confirmCopyOne(data: any) {
-    window.setNt4("/OxConfig/ClassSetter", `copyOne,${data.controller},${data.source},${data.dist}`);
+    window.setNt4("/OxConfig/ClassSetter", `copyOne,${data.controller},${data.source},${data.dist}`, "string");
   }
 
   writeResult(result: string) {
@@ -525,7 +525,8 @@ export default class TunerController implements TabController {
         }
         window.setNt4(
           "/OxConfig/ClassSetter",
-          "single," + parameters[i][1] + "," + this.EDIT_MODE_DROPDOWN.value + "," + input.value
+          "single," + parameters[i][1] + "," + this.EDIT_MODE_DROPDOWN.value + "," + input.value,
+          "string"
         );
       });
       td2.appendChild(input);

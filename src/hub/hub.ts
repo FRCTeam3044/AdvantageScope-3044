@@ -43,7 +43,7 @@ declare global {
     tabs: Tabs;
     tuner: LiveDataTuner | null;
     messagePort: MessagePort | null;
-    setNt4: (topic: string, value: any) => void;
+    setNt4: (topic: string, value: any, type: string) => void;
     isConnected: () => boolean;
     sendMainMessage: (name: string, data?: any) => void;
     startDrag: (x: number, y: number, offsetX: number, offsetY: number, data: any) => void;
@@ -118,12 +118,13 @@ function updateFancyWindow() {
   }
 }
 
-window.setNt4 = (topic: string, value: any) => {
+window.setNt4 = (topic: string, value: any, type: string) => {
   if (liveSource instanceof NT4Source) {
     try {
       liveSource.publishValue(topic, value);
     } catch (e) {
-      liveSource.publishTopic(topic, "double[]");
+      liveSource.publishTopic(topic, type);
+      liveSource.publishValue(topic, value);
     }
   }
 };

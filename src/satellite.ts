@@ -70,12 +70,21 @@ window.addEventListener("message", (event) => {
           (document.getElementById("mechanism") as HTMLElement).hidden = type !== TabType.Mechanism;
           (document.getElementById("points") as HTMLElement).hidden = type !== TabType.Points;
 
+          let clickToGo = false;
+          let clickToGoKey = "";
+          if (window.preferences) {
+            clickToGo = window.preferences.clickToGo === "odometry" || window.preferences.clickToGo === "both";
+            clickToGoKey = window.preferences.clickToGoKey;
+          }
+
           // Create visualizer
           switch (type) {
             case TabType.Odometry:
               visualizer = new OdometryVisualizer(
                 document.getElementById("odometryCanvasContainer") as HTMLElement,
-                document.getElementById("odometryHeatmapContainer") as HTMLElement
+                document.getElementById("odometryHeatmapContainer") as HTMLElement,
+                clickToGo,
+                clickToGoKey
               );
               break;
             case TabType.ThreeDimension:

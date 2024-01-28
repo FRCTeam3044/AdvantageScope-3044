@@ -483,10 +483,8 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     var intersects = new THREE.Vector3();
     this.rayCaster.setFromCamera(mousePosition, this.camera);
     this.rayCaster.ray.intersectPlane(this.planeX, intersects);
-
-    console.log("Click at: " + [-(intersects.x - 8.25), intersects.z + 4]);
     // sets selected position on field (right click) in WPI field relative values
-    window.setNt4(this.clickToGoKey, [-(intersects.x - 8.25), intersects.z + 4, -2]);
+    window.setNt4(this.clickToGoKey, [-(intersects.x - 8.25), intersects.z + 4, 0], "double[]");
   }
 
   /** Switches the selected camera. */

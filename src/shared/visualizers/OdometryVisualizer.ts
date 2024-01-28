@@ -3,7 +3,6 @@ import { Pose2d, Translation2d } from "../geometry";
 import { convert } from "../units";
 import { transformPx } from "../util";
 import Visualizer from "./Visualizer";
-import { typed } from "mathjs";
 
 export default class OdometryVisualizer implements Visualizer {
   private HEATMAP_GRID_SIZE = 0.1;
@@ -20,13 +19,33 @@ export default class OdometryVisualizer implements Visualizer {
   private lastObjectsFlipped: boolean | null = null;
   private lastHeatmapData = "";
   private lastImageSource = "";
+  private clickToGoKey: string;
 
-  constructor(container: HTMLElement, heatmapContainer: HTMLElement) {
+  pixelsToMeters: ((positionPixels: [number, number]) => [number, number]) | null = null;
+
+  constructor(container: HTMLElement, heatmapContainer: HTMLElement, clickToGo: boolean, clickToGoKey: string) {
     this.CONTAINER = container;
     this.CANVAS = container.firstElementChild as HTMLCanvasElement;
     this.HEATMAP_CONTAINER = heatmapContainer;
     this.IMAGE = document.createElement("img");
     this.CANVAS.appendChild(this.IMAGE);
+    this.clickToGoKey = clickToGoKey;
+
+    if (clickToGo) {
+      this.CANVAS.addEventListener("click", (evt) => {
+        evt.preventDefault();
+
+        let rect = this.CANVAS.getBoundingClientRect();
+        let x = evt.clientX - rect.left;
+        let y = evt.clientY - rect.top;
+
+        if (!this.pixelsToMeters) return;
+        [x, y] = this.pixelsToMeters([x, y]);
+
+        console.log(x, y + 16.45);
+        window.setNt4(this.clickToGoKey, [x, y + 16.45], "double[]");
+      });
+    }
   }
 
   render(command: any): number | null {
@@ -140,6 +159,47 @@ export default class OdometryVisualizer implements Visualizer {
         positionPixels[1] += canvasFieldTop;
       }
       return positionPixels;
+    };
+
+    this.pixelsToMeters = (positionPixels: [number, number]): [number, number] => {
+      if (!gameData) return [0, 0];
+      // Reverse canvas adjustments
+      if (objectsFlipped) {
+        positionPixels[0] = canvasFieldLeft + canvasFieldWidth - positionPixels[0];
+        positionPixels[1] = canvasFieldTop + canvasFieldHeight - positionPixels[1];
+      } else {
+        positionPixels[0] -= canvasFieldLeft;
+        positionPixels[1] -= canvasFieldTop;
+      }
+
+      // Reverse pixel-to-inch conversion
+      let positionInches: [number, number] = [
+        positionPixels[0] / (canvasFieldWidth / gameData.widthInches),
+        positionPixels[1] / (canvasFieldHeight / gameData.heightInches)
+      ];
+
+      // Reverse y-axis flipping
+      positionInches[1] *= -1;
+
+      // Reverse origin adjustment
+      switch (command.options.origin) {
+        case "left":
+          break;
+        case "center":
+          positionInches[1] -= gameData.heightInches / 2;
+          break;
+        case "right":
+          positionInches[1] -= gameData.heightInches;
+          break;
+      }
+
+      // Reverse inch-to-meter conversion
+      let translation: [number, number] = [
+        convert(positionInches[0], "inches", "meters"),
+        convert(positionInches[1], "inches", "meters")
+      ];
+
+      return translation;
     };
 
     // Recreate heatmap canvas

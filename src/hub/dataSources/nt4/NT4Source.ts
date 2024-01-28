@@ -336,9 +336,6 @@ export default class NT4Source extends LiveDataSource {
 
       // Start connection
       this.client.connect();
-      this.client.publishTopic("/OxConfig/KeySetter", "string");
-      this.client.publishTopic("/OxConfig/ClassSetter", "string");
-      this.client.publishTopic("/OxConfig/ModeSetter", "string");
     }
   }
 

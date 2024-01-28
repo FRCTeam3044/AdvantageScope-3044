@@ -47,6 +47,12 @@ export default class OdometryController extends TimelineVizController {
 
   constructor(content: HTMLElement) {
     let configBody = content.getElementsByClassName("timeline-viz-config")[0].firstElementChild as HTMLElement;
+    let clickToGo = false;
+    let clickToGoKey = "";
+    if (window.preferences) {
+      clickToGo = window.preferences.clickToGo === "odometry" || window.preferences.clickToGo === "both";
+      clickToGoKey = window.preferences.clickToGoKey;
+    }
     super(
       content,
       TabType.Odometry,
@@ -81,7 +87,9 @@ export default class OdometryController extends TimelineVizController {
       ],
       new OdometryVisualizer(
         content.getElementsByClassName("odometry-canvas-container")[0] as HTMLElement,
-        content.getElementsByClassName("odometry-heatmap-container")[0] as HTMLElement
+        content.getElementsByClassName("odometry-heatmap-container")[0] as HTMLElement,
+        clickToGo,
+        clickToGoKey
       )
     );
 
