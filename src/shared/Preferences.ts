@@ -11,7 +11,9 @@ export default interface Preferences {
   threeDimensionModeAc: "cinematic" | "standard" | "low-power";
   threeDimensionModeBattery: "" | "cinematic" | "standard" | "low-power";
   tbaApiKey: string;
+  userAssetsFolder: string | null;
   skipHootNonProWarning: boolean;
+  skipFrcLogFolderDefault: boolean;
   usb?: boolean;
   deployDirectory: string;
   clickToGo: "none" | "odometry" | "3d" | "both";

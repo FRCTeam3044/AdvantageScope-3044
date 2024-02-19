@@ -25,22 +25,22 @@ import path from "path";
 import { Client } from "ssh2";
 import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
 import ExportOptions from "../shared/ExportOptions";
-import { HubState } from "../shared/HubState";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
 import TabType, { getAllTabTypes, getDefaultTabTitle, getTabIcon } from "../shared/TabType";
 import { BUILD_DATE, COPYRIGHT, DISTRIBUTOR, Distributor } from "../shared/buildConstants";
 import { MERGE_MAX_FILES } from "../shared/log/LogUtil";
 import { UnitConversionPreset } from "../shared/units";
-import { jsonCopy } from "../shared/util";
 import {
-  DEFAULT_LOGS_FOLDER,
   DEFAULT_PREFS,
   DOWNLOAD_CONNECT_TIMEOUT_MS,
   DOWNLOAD_PASSWORD,
   DOWNLOAD_REFRESH_INTERVAL_MS,
   DOWNLOAD_RETRY_DELAY_MS,
   DOWNLOAD_USERNAME,
+  FRC_LOG_FOLDER,
+  HUB_DEFAULT_HEIGHT,
+  HUB_DEFAULT_WIDTH,
   LAST_OPEN_FILE,
   PATHPLANNER_CONNECT_TIMEOUT_MS,
   PATHPLANNER_DATA_TIMEOUT_MS,
@@ -53,14 +53,15 @@ import {
   RLOG_DATA_TIMEOUT_MS,
   RLOG_HEARTBEAT_DATA,
   RLOG_HEARTBEAT_DELAY_MS,
-  USER_ASSETS,
+  SATELLITE_DEFAULT_HEIGHT,
+  SATELLITE_DEFAULT_WIDTH,
   WINDOW_ICON
 } from "./Constants";
-import StateTracker from "./StateTracker";
+import StateTracker, { ApplicationState, SatelliteWindowState, WindowState } from "./StateTracker";
 import UpdateChecker from "./UpdateChecker";
 import { VideoProcessor } from "./VideoProcessor";
 import { getAssetDownloadStatus, startAssetDownload } from "./assetsDownload";
-import { convertLegacyAssets, createAssetFolders, loadAssets } from "./assetsUtil";
+import { convertLegacyAssets, createAssetFolders, getUserAssetsPath, loadAssets } from "./assetsUtil";
 import { checkHootIsPro, convertHoot, copyOwlet } from "./hootUtil";
 
 // Global variables
@@ -71,8 +72,9 @@ let licensesWindow: BrowserWindow | null = null;
 let satelliteWindows: { [id: string]: BrowserWindow[] } = {};
 let windowPorts: { [id: number]: MessagePortMain } = {};
 let hubTouchBarSliders: { [id: number]: TouchBarSlider } = {};
+let hubExportingIds: Set<number> = new Set();
 
-let hubStateTracker = new StateTracker();
+let stateTracker = new StateTracker();
 let updateChecker = new UpdateChecker();
 let usingUsb = false; // Menu bar setting, bundled with other prefs for renderers
 let firstOpenPath: string | null = null; // Cache path to open immediately
@@ -221,7 +223,7 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       break;
 
     case "save-state":
-      hubStateTracker.saveRendererState(window, message.data);
+      stateTracker.saveRendererState(window, message.data);
       break;
 
     case "prompt-update":
@@ -260,8 +262,24 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
               return;
             }
             fs.readFile(file, (error, buffer) => {
+              let limitLength = false;
+              if (buffer.length > 75 * 1024 * 1024) {
+                let response = dialog.showMessageBoxSync(window, {
+                  type: "warning",
+                  title: "Warning",
+                  message: "Very large log file",
+                  detail: "This log file is very large. Would you like to read the full log or only the first 75MB?",
+                  buttons: ["Read First 75MB", "Read Full Log"],
+                  defaultId: 0,
+                  icon: WINDOW_ICON
+                });
+                limitLength = response === 0;
+              }
               completedCount++;
               if (!error) {
+                if (limitLength) {
+                  buffer = buffer.subarray(0, Math.min(buffer.length, 75 * 1024 * 1024));
+                }
                 callback(buffer);
               }
               sendIfReady();
@@ -572,7 +590,7 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       break;
 
     case "create-satellite":
-      createSatellite(window, message.data.uuid, message.data.type);
+      createSatellite({ parentWindow: window, uuid: message.data.uuid, type: message.data.type });
       break;
 
     case "update-satellite":
@@ -623,6 +641,14 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
           sendMessage(window, "finish-export");
         }
       });
+      break;
+
+    case "set-exporting":
+      if (message.data) {
+        hubExportingIds.add(window.id);
+      } else {
+        hubExportingIds.delete(window.id);
+      }
       break;
 
     case "select-video":
@@ -712,7 +738,70 @@ function select3DCameraPopup(window: BrowserWindow, options: string[], selectedI
   );
   cameraMenu.append(
     new MenuItem({
-      label: "Orbit FOV...",
+      label: "Driver Station",
+      submenu: [
+        {
+          label: "Auto",
+          type: "checkbox",
+          checked: selectedIndex === -3,
+          click() {
+            sendMessage(window, "set-3d-camera", -3);
+          }
+        },
+        {
+          label: "Blue 1",
+          type: "checkbox",
+          checked: selectedIndex === -4,
+          click() {
+            sendMessage(window, "set-3d-camera", -4);
+          }
+        },
+        {
+          label: "Blue 2",
+          type: "checkbox",
+          checked: selectedIndex === -5,
+          click() {
+            sendMessage(window, "set-3d-camera", -5);
+          }
+        },
+        {
+          label: "Blue 3",
+          type: "checkbox",
+          checked: selectedIndex === -6,
+          click() {
+            sendMessage(window, "set-3d-camera", -6);
+          }
+        },
+        {
+          label: "Red 1",
+          type: "checkbox",
+          checked: selectedIndex === -7,
+          click() {
+            sendMessage(window, "set-3d-camera", -7);
+          }
+        },
+        {
+          label: "Red 2",
+          type: "checkbox",
+          checked: selectedIndex === -8,
+          click() {
+            sendMessage(window, "set-3d-camera", -8);
+          }
+        },
+        {
+          label: "Red 3",
+          type: "checkbox",
+          checked: selectedIndex === -9,
+          click() {
+            sendMessage(window, "set-3d-camera", -9);
+          }
+        }
+      ]
+    })
+  );
+  cameraMenu.append(
+    new MenuItem({
+      label: "Set FOV...",
       click() {
         createEditFovWindow(window, fov, (newFov) => {
           sendMessage(window, "edit-fov", newFov);
@@ -879,7 +968,7 @@ function downloadSave(files: string[]) {
       title: "Select save location for robot logs",
       buttonLabel: "Save",
       properties: ["openDirectory", "createDirectory", "dontAddToRecent"],
-      defaultPath: DEFAULT_LOGS_FOLDER
+      defaultPath: getDefaultLogPath()
     });
   } else {
     let extension = path.extname(files[0]).slice(1);
@@ -1045,6 +1134,7 @@ function downloadSave(files: string[]) {
 /** Create the app menu. */
 function setupMenu() {
   const isMac = process.platform === "darwin";
+  const prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
 
   const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
     {
@@ -1060,7 +1150,7 @@ function setupMenu() {
                 title: "Select a robot log file to open",
                 properties: ["openFile"],
                 filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents", "hoot"] }],
-                defaultPath: DEFAULT_LOGS_FOLDER
+                defaultPath: getDefaultLogPath()
               })
               .then((files) => {
                 if (files.filePaths.length > 0) {
@@ -1079,7 +1169,7 @@ function setupMenu() {
               message: "Up to " + MERGE_MAX_FILES.toString() + " files can be opened together",
               properties: ["openFile", "multiSelections"],
               filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents", "hoot"] }],
-              defaultPath: DEFAULT_LOGS_FOLDER
+              defaultPath: getDefaultLogPath()
             });
             let files = filesResponse.filePaths;
             if (files.length === 0) {
@@ -1188,10 +1278,9 @@ function setupMenu() {
         { type: "separator" },
         {
           label: "Export Layout...",
-          click(_, window) {
-            if (window === undefined || !hubWindows.includes(window)) return;
+          click() {
             dialog
-              .showSaveDialog(window, {
+              .showSaveDialog({
                 title: "Select export location for layout file",
                 defaultPath: "AdvantageScope " + new Date().toLocaleDateString().replaceAll("/", "-") + ".json",
                 properties: ["createDirectory", "showOverwriteConfirmation", "dontAddToRecent"],
@@ -1199,25 +1288,18 @@ function setupMenu() {
               })
               .then((response) => {
                 if (!response.canceled) {
-                  let hubState: HubState = hubStateTracker.getRendererState(window);
-                  jsonfile.writeFile(
-                    response.filePath!,
-                    {
-                      version: app.isPackaged ? app.getVersion() : "dev",
-                      layout: hubState.tabs.tabs
-                    },
-                    { spaces: 2 }
-                  );
+                  let state = stateTracker.getCurrentApplicationState() as ApplicationState & { version: string };
+                  state.version = app.isPackaged ? app.getVersion() : "dev";
+                  jsonfile.writeFile(response.filePath!, state, { spaces: 2 });
                 }
               });
           }
         },
         {
           label: "Import Layout...",
-          click(_, window) {
-            if (window === undefined || !hubWindows.includes(window)) return;
+          click() {
             dialog
-              .showOpenDialog(window, {
+              .showOpenDialog({
                 title: "Select one or more layout files to import",
                 properties: ["openFile", "multiSelections"],
                 filters: [{ name: "JSON files", extensions: ["json"] }]
@@ -1227,12 +1309,23 @@ function setupMenu() {
                   let data = jsonfile.readFileSync(files.filePaths[0]);
 
                   // Check for required fields
-                  if (!("version" in data && "layout" in data && Array.isArray(data.layout))) {
-                    dialog.showMessageBox(window, {
+                  if (
+                    !(
+                      "version" in data &&
+                      "hubs" in data &&
+                      Array.isArray(data.hubs) &&
+                      "satellites" in data &&
+                      Array.isArray(data.satellites)
+                    )
+                  ) {
+                    const oldLayout = "layout" in data && Array.isArray(data.layout);
+                    dialog.showMessageBox({
                       type: "error",
                       title: "Error",
                       message: "Failed to import layout",
-                      detail: "The selected layout file was not a recognized format.",
+                      detail: oldLayout
+                        ? "The selected layout file uses an older format which is not compatible with the current version of AdvantageScope."
+                        : "The selected layout file was not a recognized format.",
                       icon: WINDOW_ICON
                     });
                     return;
@@ -1244,18 +1337,21 @@ function setupMenu() {
                       let additionalLayout = jsonfile.readFileSync(file);
                       if (
                         "version" in additionalLayout &&
-                        "layout" in additionalLayout &&
-                        Array.isArray(additionalLayout.layout) &&
+                        "hubs" in additionalLayout &&
+                        Array.isArray(additionalLayout.hubs) &&
+                        "satellites" in additionalLayout &&
+                        Array.isArray(additionalLayout.satellites) &&
                         additionalLayout.version === data.version
                       ) {
-                        data.layout = data.layout.concat(additionalLayout.layout);
+                        data.hubs = data.hubs.concat(additionalLayout.hubs);
+                        data.satellites = data.satellites.concat(additionalLayout.satellites);
                       }
                     }
                   }
 
                   // Check version compatability
                   if (app.isPackaged && data.version !== app.getVersion()) {
-                    let result = dialog.showMessageBoxSync(window, {
+                    let result = dialog.showMessageBoxSync({
                       type: "warning",
                       title: "Warning",
                       message: "Version mismatch",
@@ -1267,10 +1363,28 @@ function setupMenu() {
                     if (result !== 0) return;
                   }
 
-                  // Send to hub
-                  let hubState: HubState = jsonCopy(hubStateTracker.getRendererState(window));
-                  hubState.tabs.tabs = data.layout;
-                  sendMessage(window, "restore-state", hubState);
+                  // Close all current hub and satellite windows
+                  hubWindows.forEach((window) => {
+                    if (!window.isDestroyed()) {
+                      window.close();
+                    }
+                  });
+                  Object.values(satelliteWindows).forEach((windows) =>
+                    windows.forEach((window) => {
+                      if (!window.isDestroyed()) {
+                        window.close();
+                      }
+                    })
+                  );
+
+                  // Create new windows based on layout
+                  let applicationState = data as ApplicationState;
+                  applicationState.hubs.forEach((hubState) => {
+                    createHubWindow(hubState);
+                  });
+                  applicationState.satellites.forEach((satelliteState) => {
+                    createSatellite({ state: satelliteState });
+                  });
                 }
               });
           }
@@ -1363,14 +1477,70 @@ function setupMenu() {
         }
       ]
     },
-    { role: "windowMenu" },
+    isMac
+      ? { role: "windowMenu" }
+      : {
+          label: "Window",
+          submenu: [
+            { role: "minimize" },
+            {
+              label: "Bring All to Front",
+              accelerator: "Ctrl+B",
+              click(_, window) {
+                hubWindows.forEach((window) => {
+                  if (!window.isDestroyed()) {
+                    window.moveTop();
+                  }
+                });
+                if (downloadWindow && !downloadWindow.isDestroyed()) downloadWindow.moveTop();
+                if (prefsWindow && !prefsWindow.isDestroyed()) prefsWindow?.moveTop();
+                if (licensesWindow && !licensesWindow.isDestroyed()) licensesWindow?.moveTop();
+                Object.values(satelliteWindows).forEach((windows) =>
+                  windows.forEach((window) => {
+                    if (!window.isDestroyed()) {
+                      window.moveTop();
+                    }
+                  })
+                );
+                window?.moveTop();
+              }
+            },
+            { type: "separator" }
+          ]
+        },
     {
       role: "help",
       submenu: [
         {
           label: "Show Assets Folder",
           click() {
-            shell.openPath(USER_ASSETS);
+            shell.openPath(getUserAssetsPath());
+          }
+        },
+        {
+          label: "Use Custom Assets Folder",
+          type: "checkbox",
+          checked: prefs.userAssetsFolder !== null,
+          async click(item) {
+            const isCustom = item.checked;
+            let prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
+            if (isCustom) {
+              let result = await dialog.showOpenDialog({
+                title: "Select folder containing custom AdvantageScope assets",
+                buttonLabel: "Open",
+                properties: ["openDirectory", "createDirectory", "dontAddToRecent"]
+              });
+              if (result.filePaths.length >= 1) {
+                prefs.userAssetsFolder = result.filePaths[0];
+              }
+            } else {
+              prefs.userAssetsFolder = null;
+            }
+            item.checked = prefs.userAssetsFolder !== null;
+            jsonfile.writeFileSync(PREFS_FILENAME, prefs);
+            advantageScopeAssets = loadAssets();
+            sendAllPreferences();
+            sendAssets();
           }
         },
         {
@@ -1545,7 +1715,7 @@ function createAboutWindow() {
 }
 
 /** Creates a new hub window. */
-function createHubWindow() {
+function createHubWindow(state?: WindowState) {
   let prefs: BrowserWindowConstructorOptions = {
     minWidth: 800,
     minHeight: 400,
@@ -1559,16 +1729,11 @@ function createHubWindow() {
 
   // Manage window state
   let focusedWindow = BrowserWindow.getFocusedWindow();
-  let rendererState: any = null;
-  const defaultWidth = 1100;
-  const defaultHeight = 650;
-  if (hubWindows.length === 0) {
-    let state = hubStateTracker.getState(defaultWidth, defaultHeight);
+  if (state !== undefined) {
     prefs.x = state.x;
     prefs.y = state.y;
     prefs.width = state.width;
     prefs.height = state.height;
-    if (state.rendererState) rendererState = state.rendererState;
   } else if (focusedWindow !== null) {
     let bounds = focusedWindow.getBounds();
     prefs.x = bounds.x + 30;
@@ -1576,8 +1741,8 @@ function createHubWindow() {
     prefs.width = bounds.width;
     prefs.height = bounds.height;
   } else {
-    prefs.width = defaultWidth;
-    prefs.height = defaultHeight;
+    prefs.width = HUB_DEFAULT_WIDTH;
+    prefs.height = HUB_DEFAULT_HEIGHT;
   }
 
   // Set fancy window effects
@@ -1640,7 +1805,6 @@ function createHubWindow() {
 
   // Show window when loaded
   window.once("ready-to-show", window.show);
-
   let firstLoad = true;
   let createPorts = () => {
     const { port1, port2 } = new MessageChannelMain();
@@ -1674,19 +1838,34 @@ function createHubWindow() {
     });
     sendMessage(window, "show-update-button", updateChecker.getShouldPrompt());
     sendAllPreferences();
-    if (firstLoad) {
-      if (rendererState) sendMessage(window, "restore-state", rendererState); // Use state from file
+    if (firstLoad && state !== undefined) {
+      sendMessage(window, "restore-state", state.state);
     } else {
-      sendMessage(window, "restore-state", hubStateTracker.getRendererState(window)); // Use last cached state
+      let cachedState = stateTracker.getRendererState(window);
+      if (cachedState !== undefined) {
+        sendMessage(window, "restore-state", stateTracker.getRendererState(window));
+      }
     }
     firstLoad = false;
+  });
+  window.on("close", (event) => {
+    if (hubExportingIds.has(window.id)) {
+      const choice = dialog.showMessageBoxSync(window, {
+        type: "info",
+        title: "Warning",
+        message: "Export in progress",
+        detail: "Are you sure you want to close the window while an export is in progress? Data will NOT be saved.",
+        buttons: ["Don't Close", "Close"],
+        defaultId: 0
+      });
+      if (choice === 0) event.preventDefault();
+    }
   });
   window.on("enter-full-screen", () => sendMessage(window, "set-fullscreen", true));
   window.on("leave-full-screen", () => sendMessage(window, "set-fullscreen", false));
   window.on("blur", () => sendMessage(window, "set-focused", false));
   window.on("focus", () => {
     sendMessage(window, "set-focused", true);
-    hubStateTracker.setFocusedWindow(window);
     hubWindows.splice(hubWindows.indexOf(window), 1);
     hubWindows.splice(0, 0, window);
   });
@@ -1960,14 +2139,41 @@ function createExportWindow(
  * @param uuid UUID to use.
  * @param type TabType to use.
  */
-function createSatellite(parentWindow: Electron.BrowserWindow, uuid: string, type: TabType) {
-  const width = 900;
-  const height = 500;
+function createSatellite(
+  config:
+    | {
+        parentWindow: Electron.BrowserWindow;
+        uuid: string;
+        type: TabType;
+      }
+    | {
+        state: SatelliteWindowState;
+      }
+) {
+  const configData = !("state" in config)
+    ? (config as {
+        parentWindow: Electron.BrowserWindow;
+        uuid: string;
+        type: TabType;
+      })
+    : undefined;
+  const state = "state" in config ? config.state : undefined;
+
+  const width = state === undefined ? SATELLITE_DEFAULT_WIDTH : state.width;
+  const height = state === undefined ? SATELLITE_DEFAULT_HEIGHT : state.height;
+  const x =
+    configData === undefined
+      ? state?.x
+      : Math.floor(configData.parentWindow.getBounds().x + configData.parentWindow.getBounds().width / 2 - width / 2);
+  const y =
+    configData === undefined
+      ? state?.y
+      : Math.floor(configData.parentWindow.getBounds().y + configData.parentWindow.getBounds().height / 2 - height / 2);
   const satellite = new BrowserWindow({
     width: width,
     height: height,
-    x: Math.floor(parentWindow.getBounds().x + parentWindow.getBounds().width / 2 - width / 2),
-    y: Math.floor(parentWindow.getBounds().y + parentWindow.getBounds().height / 2 - height / 2),
+    x: x,
+    y: y,
     minWidth: 200,
     minHeight: 100,
     resizable: true,
@@ -1980,6 +2186,7 @@ function createSatellite(parentWindow: Electron.BrowserWindow, uuid: string, typ
   satellite.setMenu(null);
   satellite.once("ready-to-show", satellite.show);
   satellite.loadFile(path.join(__dirname, "../www/satellite.html"));
+  let firstLoad = true;
   satellite.webContents.on("dom-ready", () => {
     // Create ports on reload
     const { port1, port2 } = new MessageChannelMain();
@@ -2005,29 +2212,42 @@ function createSatellite(parentWindow: Electron.BrowserWindow, uuid: string, typ
         case "ask-3d-camera":
           select3DCameraPopup(satellite, message.data.options, message.data.selectedIndex, message.data.fov);
           break;
+
+        case "save-state":
+          stateTracker.saveRendererState(satellite, message.data);
+          break;
       }
     });
     port2.start();
     sendMessage(satellite, "set-assets", advantageScopeAssets);
-    sendMessage(satellite, "set-type", type);
     sendMessage(satellite, "set-battery", powerMonitor.isOnBatteryPower());
+    if (firstLoad) {
+      if (configData !== undefined) {
+        sendMessage(satellite, "set-type", configData.type);
+      } else if (state !== undefined) {
+        sendMessage(satellite, "restore-state", state.state);
+      }
+    } else {
+      let cachedState = stateTracker.getRendererState(satellite);
+      if (cachedState !== undefined) {
+        sendMessage(satellite, "restore-state", stateTracker.getRendererState(satellite));
+      }
+    }
     sendAllPreferences();
+    firstLoad = false;
   });
   powerMonitor.on("on-ac", () => sendMessage(satellite, "set-battery", false));
   powerMonitor.on("on-battery", () => sendMessage(satellite, "set-battery", true));
 
+  const uuid = configData !== undefined ? configData.uuid : state!.uuid;
   if (!(uuid in satelliteWindows)) {
     satelliteWindows[uuid] = [];
   }
   satelliteWindows[uuid].push(satellite);
-
-  let closed = false;
-  parentWindow.once("close", () => {
-    if (!closed) satellite.close();
-  });
+  stateTracker.saveSatelliteIds(satelliteWindows);
   satellite.once("closed", () => {
-    closed = true;
-    satelliteWindows[uuid].splice(satelliteWindows[uuid].indexOf(satellite), 1);
+    satelliteWindows[uuid!].splice(satelliteWindows[uuid!].indexOf(satellite), 1);
+    stateTracker.saveSatelliteIds(satelliteWindows);
   });
 }
 
@@ -2042,7 +2262,8 @@ function openPreferences(parentWindow: Electron.BrowserWindow) {
   }
 
   const width = 400;
-  const height = process.platform === "win32" ? 404 : 374; // "useContentSize" is broken on Windows when not resizable
+  const rows = 12;
+  const height = process.platform === "win32" ? rows * 27 + 114 : rows * 27 + 54; // "useContentSize" is broken on Windows when not resizable
   prefsWindow = new BrowserWindow({
     width: width,
     height: height,
@@ -2191,6 +2412,17 @@ function checkForUpdate(alwaysPrompt: boolean) {
   });
 }
 
+/** Returns the default path to use for storing log files. */
+function getDefaultLogPath(): string | undefined {
+  if (process.platform !== "win32") return undefined;
+  let prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
+  if (prefs.skipFrcLogFolderDefault) return undefined;
+  prefs.skipFrcLogFolderDefault = true;
+  jsonfile.writeFileSync(PREFS_FILENAME, prefs);
+  sendAllPreferences();
+  return FRC_LOG_FOLDER;
+}
+
 // "unsafe-eval" is required in the hub for protobufjs
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
@@ -2303,6 +2535,19 @@ app.whenReady().then(() => {
     ) {
       prefs.clickToGo = oldPrefs.clickToGo;
     }
+    if (
+      "userAssetsFolder" in oldPrefs &&
+      typeof oldPrefs.userAssetsFolder === "string" &&
+      fs.existsSync(oldPrefs.userAssetsFolder)
+    ) {
+      prefs.userAssetsFolder = oldPrefs.userAssetsFolder;
+    }
+    if ("skipHootNonProWarning" in oldPrefs && typeof oldPrefs.skipHootNonProWarning === "boolean") {
+      prefs.skipHootNonProWarning = oldPrefs.skipHootNonProWarning;
+    }
+    if ("skipFrcLogFolderDefault" in oldPrefs && typeof oldPrefs.skipFrcLogFolderDefault === "boolean") {
+      prefs.skipFrcLogFolderDefault = oldPrefs.skipFrcLogFolderDefault;
+    }
     jsonfile.writeFileSync(PREFS_FILENAME, prefs);
     nativeTheme.themeSource = prefs.theme;
   }
@@ -2321,9 +2566,21 @@ app.whenReady().then(() => {
   }, 5000);
   advantageScopeAssets = loadAssets();
 
-  // Create menu and window
+  // Create menu and windows
   setupMenu();
-  let window = createHubWindow();
+  let applicationState = stateTracker.getSavedApplicationState();
+  let targetWindow: BrowserWindow | null = null;
+  if (applicationState === null || applicationState.hubs.length === 0) {
+    targetWindow = createHubWindow();
+  } else {
+    applicationState.hubs.forEach((hubState, index) => {
+      let hubWindow = createHubWindow(hubState);
+      if (index === 0) targetWindow = hubWindow;
+    });
+    applicationState.satellites.forEach((satelliteState) => {
+      createSatellite({ state: satelliteState });
+    });
+  }
 
   // Check for file path given as argument
   let argv = [...process.argv];
@@ -2337,9 +2594,9 @@ app.whenReady().then(() => {
   }
 
   // Open file if exists
-  if (firstOpenPath !== null) {
-    window.webContents.once("dom-ready", () => {
-      sendMessage(window, "open-files", [firstOpenPath]);
+  if (firstOpenPath !== null && targetWindow !== null) {
+    targetWindow.webContents.once("dom-ready", () => {
+      sendMessage(targetWindow!, "open-files", [firstOpenPath]);
     });
   }
 
@@ -2363,7 +2620,6 @@ app.on("window-all-closed", () => {
 
 // macOS only, Linux & Windows start a new process and pass the file as an argument
 app.on("open-file", (_, path) => {
-  console.log(path);
   if (app.isReady()) {
     // Already running, create a new window
     let window = createHubWindow();

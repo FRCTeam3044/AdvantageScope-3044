@@ -83,11 +83,12 @@ The w, x, y, and z rotation values represent a quaternion, which is used interna
 The following objects are supported:
 
 - Robot
-- Ghost (Green & Yellow)
+- Ghost (Green, Yellow, Blue, & Red)
 - AprilTag (36h11 & 16h5)
 - Axes
 - Trajectory
 - Vision Target
+- Game Pieces
 - Blue Cone (Front/Center/Back)
 - Yellow Cone (Front/Center/Back)
 - Camera Override (more details under "Camera Options")
@@ -116,27 +117,46 @@ To visualize mechanism data using articulated 3D components, log a set of 3D pos
 
 ![3D mechanism](/docs/resources/3d-field/3d-field-4.png)
 
+## Game Piece Objects
+
+Each field includes a set of game piece object types, allowing game pieces to be rendered at any position on the field using data published by the robot code. This has a variety of applications, including:
+
+- Visualizing the actions of simulated auto routines using simple animations
+- Showing the detected locations of game pieces on the field
+- Indicating where game pieces are located within a robot
+- Viewing shot trajectories based on physics calculations
+
+The AdvantageKit KitBot 2024 example project includes a simple example of a [command](https://github.com/Mechanical-Advantage/AdvantageKit/blob/main/example_projects/kitbot_2024/src/main/java/frc/robot/util/NoteVisualizer.java) that animates a note traveling from the robot to the speaker. This command is incorporated into the standard [launch sequence](https://github.com/Mechanical-Advantage/AdvantageKit/blob/main/example_projects/kitbot_2024/src/main/java/frc/robot/subsystems/launcher/Launcher.java#L73), triggering the animation whenever a note is released. [This video](https://youtube.com/shorts/-HxfDo9f19U?feature=share) shows how game piece animations can be used to visualize auto routines for several different games.
+
+Another simple use case is showing the state of game pieces within the robot based on sensor data. For example, a beam break sensor within the note path for a 2024 robot could cause a note to appear:
+
+![2024 KitBot note visualization](/docs/resources/3d-field/3d-field-5.png)
+
 ## Camera Options
 
 To switch the selected camera mode, right-click on the rendered field view. The camera mode and position is controlled independently for every pop-up window, allowing for the easy creation of multi-camera views.
+
+> Note: Right-click the rendered field view and click "Set FOV..." to adjust the FOV of the orbiting and Driver Station cameras.
 
 ### Orbit Field
 
 This is the default camera mode, where the camera can be freely moved relative to the field. **Left-click + drag** rotates the camera, and **right-click + drag** pans the camera. **Scroll** to zoom in and out.
 
-> Note: Right-click the rendered field view and click "Orbit FOV..." to adjust the FOV of the orbiting camera.
-
 ### Orbit Robot
 
 This mode has the same controls as the "Orbit Field" mode, but the camera's position is locked relative to the robot. This allows for "tracking" shots of the robot's movement.
 
-> Note: Right-click the rendered field view and click "Orbit FOV..." to adjust the FOV of the orbiting camera.
+### Driver Station
+
+This mode locks the camera behind one of the driver stations at typical eye-height. Either manually choose the station to view or choose "Auto" to use the alliance and station number stored in the log data.
+
+> Note: Automatic selection of station number may be inaccurate when viewing log data produced by AdvantageKit 2023 or earlier.
 
 ### Fixed Camera
 
 Each robot model is configured with a set of fixed cameras, like vision and driver cameras. These cameras have fixed positions, aspect ratios, and FOVs. These views are often useful to check vision data or to simulate a driver camera view. In the example below, a driver camera is shown.
 
-![Fixed camera](/docs/resources/3d-field/3d-field-5.png)
+![Fixed camera](/docs/resources/3d-field/3d-field-6.png)
 
 If a "Camera Override" pose is provided, it replaces the default poses of all fixed cameras while retaining their configured FOVs and aspect ratios. This allows the robot code to provide the position of a moving camera, like one mounted to a turret or shooter hood.
 
@@ -144,14 +164,16 @@ If a "Camera Override" pose is provided, it replaces the default poses of all fi
 
 ## Configuration
 
-![Configuration options](/docs/resources/3d-field/3d-field-6.png)
+![Configuration options](/docs/resources/3d-field/3d-field-7.png)
 
 The following configuration options are available:
 
 - **Field:** The field model to use, defaults to the most recent game. We recommend using the "Evergreen" field for devices with limited graphical performance. The "Axes" field displays only XYZ axes at the origin with a field outline for scale.
-- **Alliance:** The current alliance color, which flips the origin to the opposite side of the field.
+- **Alliance:** The position of the field origin, on the blue or red alliance wall. "Auto" will select the alliance color based on the available log data.
 - **Robot:** The robot model to use. We recommend using the "KitBot" model for devices with limited graphical performance. To add a custom field or robot model, see [Custom Assets](/docs/CUSTOM-ASSETS.md).
 - **Units:** The linear and angular units of the provided fields. Meters, inches, radians, and degrees are supported. The rotations units do no affect 3D poses.
+
+> Note: Automatic selection of alliance color may be inaccurate when viewing log data produced by AdvantageKit 2023 or earlier.
 
 ## Rendering Modes
 
@@ -161,8 +183,8 @@ The 3D field supports three rendering modes:
 - **Standard (Default):** Render with minimal lighting (no functional difference from cinematic mode).
 - **Low Power:** Lower the framerate and resolution to reduce battery consumption and provide more consistent performance on low-end devices.
 
-![Comparion of rendering modes](/docs/resources/3d-field/3d-field-7.png)
+![Comparion of rendering modes](/docs/resources/3d-field/3d-field-8.png)
 
 To configure the rendering mode, open the preferences window by pressing **cmd/ctrl + comma** or clicking "Help" > "Show Preferences..." (Windows/Linux) or "AdvantageScope" > "Settings..." (macOS). The "3D Mode (Battery)" setting can be switched from the default to override the rendering mode used on a laptop when not charging. For example, this can be used to preserve battery while at competition.
 
-![Rendering mode preferences](/docs/resources/3d-field/3d-field-8.png)
+![Rendering mode preferences](/docs/resources/3d-field/3d-field-9.png)

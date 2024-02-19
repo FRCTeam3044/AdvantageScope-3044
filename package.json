@@ -1,7 +1,7 @@
 {
   "name": "advantagescope-3044",
   "productName": "AdvantageScope-3044",
-  "version": "3.0.4-3044",
+  "version": "3.1.4-3044",
   "description": "Robot telemetry application for FRC with extra features for oxconfig (Fork of FRC Team 6328 MechanicalAdvantage's AdvantageScope)",
   "author": {
     "name": "nab138 FRC 3044",
@@ -42,6 +42,7 @@
     "chart.js": "^4.4.0",
     "electron": "^26.2.1",
     "electron-builder": "^24.6.4",
+    "fuse.js": "^7.0.0",
     "heatmap.js": "https://github.com/jwbonner/heatmap.js.git",
     "highlight.js": "^11.9.0",
     "mathjs": "11.3.0",

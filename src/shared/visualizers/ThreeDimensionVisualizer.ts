@@ -6,7 +6,15 @@ import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { GLTF, GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { CSS2DObject, CSS2DRenderer } from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import { Config3dField, Config3dRobot, Config3d_Rotation } from "../AdvantageScopeAssets";
+import {
+  ALLIANCE_STATION_WIDTH,
+  Config3dField,
+  Config3dRobot,
+  Config3d_Rotation,
+  DEFAULT_DRIVER_STATIONS,
+  STANDARD_FIELD_LENGTH,
+  STANDARD_FIELD_WIDTH
+} from "../AdvantageScopeAssets";
 import {
   APRIL_TAG_16H5_COUNT,
   APRIL_TAG_36H11_COUNT,
@@ -21,25 +29,22 @@ import { clampValue, zfill } from "../util";
 import Visualizer from "./Visualizer";
 
 export default class ThreeDimensionVisualizer implements Visualizer {
+  static GHOST_COLORS = ["Green", "Yellow", "Blue", "Red"];
   private LOWER_POWER_MAX_FPS = 30;
   private MAX_ORBIT_FOV = 160;
   private MIN_ORBIT_FOV = 10;
-  private STANDARD_FIELD_LENGTH = convert(54, "feet", "meters");
-  private STANDARD_FIELD_WIDTH = convert(27, "feet", "meters");
   private ORBIT_FIELD_DEFAULT_TARGET = new THREE.Vector3(0, 0.5, 0);
-  private ORBIT_AXES_DEFAULT_TARGET = new THREE.Vector3(
-    this.STANDARD_FIELD_LENGTH / 2,
-    0,
-    -this.STANDARD_FIELD_WIDTH / 2
-  );
+  private ORBIT_AXES_DEFAULT_TARGET = new THREE.Vector3(STANDARD_FIELD_LENGTH / 2, 0, -STANDARD_FIELD_WIDTH / 2);
   private ORBIT_ROBOT_DEFAULT_TARGET = new THREE.Vector3(0, 0.5, 0);
   private ORBIT_FIELD_DEFAULT_POSITION = new THREE.Vector3(0, 6, -12);
   private ORBIT_AXES_DEFAULT_POSITION = new THREE.Vector3(
-    2 + this.STANDARD_FIELD_LENGTH / 2,
+    2 + STANDARD_FIELD_LENGTH / 2,
     2,
-    -4 - this.STANDARD_FIELD_WIDTH / 2
+    -4 - STANDARD_FIELD_WIDTH / 2
   );
   private ORBIT_ROBOT_DEFAULT_POSITION = new THREE.Vector3(2, 1, 1);
+  private DS_CAMERA_HEIGHT = convert(62, "inches", "meters"); // https://www.ergocenter.ncsu.edu/wp-content/uploads/sites/18/2017/09/Anthropometric-Summary-Data-Tables.pdf
+  private DS_CAMERA_OFFSET = 1.5; // Distance away from the glass
   private MATERIAL_SPECULAR: THREE.Color | undefined = new THREE.Color(0x666666); // Overridden if not cinematic
   private MATERIAL_SHININESS: number | undefined = 100; // Overridden if not cinematic
   private WPILIB_ROTATION = getQuaternionFromRotSeq([
@@ -70,7 +75,6 @@ export default class ThreeDimensionVisualizer implements Visualizer {
   private canvas: HTMLCanvasElement;
   private annotationsDiv: HTMLElement;
   private alert: HTMLElement;
-  private alertCamera: HTMLElement;
 
   private renderer: THREE.WebGLRenderer;
   private cssRenderer: CSS2DRenderer;
@@ -86,18 +90,19 @@ export default class ThreeDimensionVisualizer implements Visualizer {
   private fixedCameraGroup: THREE.Group;
   private fixedCameraObj: THREE.Object3D;
   private fixedCameraOverrideObj: THREE.Object3D;
+  private dsCameraGroup: THREE.Group;
+  private dsCameraObj: THREE.Object3D;
 
   private axesTemplate: THREE.Object3D;
   private field: THREE.Object3D | null = null;
   private robotSet: ObjectSet;
-  private greenGhostSet: ObjectSet;
-  private yellowGhostSet: ObjectSet;
-  private greenGhostMaterial: THREE.Material;
-  private yellowGhostMaterial: THREE.Material;
+  private ghostSets: { [key: string]: ObjectSet } = {};
+  private ghostMaterials: { [key: string]: THREE.Material } = {};
   private aprilTag36h11Sets: Map<number | null, ObjectSet> = new Map();
   private aprilTag16h5Sets: Map<number | null, ObjectSet> = new Map();
   private trajectories: Line2[] = [];
   private trajectoryLengths: number[] = [];
+  private gamePieceSets: ObjectSet[] = [];
   private visionTargets: Line2[] = [];
   private axesSet: ObjectSet;
   private coneBlueFrontSet: ObjectSet;
@@ -109,14 +114,14 @@ export default class ThreeDimensionVisualizer implements Visualizer {
   private zebraMarkerBlueSet: ObjectSet;
   private zebraMarkerRedSet: ObjectSet;
   private zebraTeamLabels: { [key: string]: CSS2DObject } = {};
-  private zebraGreenGhostSet: ObjectSet;
-  private zebraYellowGhostSet: ObjectSet;
+  private zebraGhostSets: { [key: string]: ObjectSet } = {};
 
   private command: any;
   private shouldRender = false;
-  private cameraIndex = -1;
+  private cameraIndex = -1; // -1 = Orbit Field, -2 = Orbit Robot, -3 = Auto DS, -4 to -9 = B1, B2, B3, R1, R2, R3
   private orbitFov = 50;
   private lastCameraIndex = -1;
+  private lastAutoDriverStation = -1;
   private lastFrameTime = 0;
   private lastWidth: number | null = 0;
   private lastHeight: number | null = 0;
@@ -142,7 +147,6 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     this.canvas = canvas;
     this.annotationsDiv = annotationsDiv;
     this.alert = alert;
-    this.alertCamera = alert.getElementsByTagName("span")[0];
     this.renderer = new THREE.WebGLRenderer({
       canvas: canvas,
       powerPreference: mode === "cinematic" ? "high-performance" : mode === "low-power" ? "low-power" : "default"
@@ -189,7 +193,7 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     // Create camera
     {
       const aspect = 2;
-      const near = 0.1;
+      const near = 0.15;
       const far = 1000;
       this.camera = new THREE.PerspectiveCamera(this.orbitFov, aspect, near, far);
     }
@@ -258,11 +262,20 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       this.wpilibFieldCoordinateGroup.add(this.fixedCameraGroup, this.fixedCameraOverrideObj);
     }
 
+    // Create DS camera object
+    {
+      this.dsCameraObj = new THREE.Object3D();
+      this.dsCameraObj.position.set(-this.DS_CAMERA_OFFSET, 0.0, this.DS_CAMERA_HEIGHT);
+      this.dsCameraGroup = new THREE.Group().add(this.dsCameraObj);
+      this.wpilibCoordinateGroup.add(this.dsCameraGroup);
+    }
+
     // Set up object sets
     {
       this.robotSet = new ObjectSet(this.wpilibFieldCoordinateGroup);
-      this.greenGhostSet = new ObjectSet(this.wpilibFieldCoordinateGroup);
-      this.yellowGhostSet = new ObjectSet(this.wpilibFieldCoordinateGroup);
+      ThreeDimensionVisualizer.GHOST_COLORS.forEach((color) => {
+        this.ghostSets[color] = new ObjectSet(this.wpilibFieldCoordinateGroup);
+      });
       this.axesSet = new ObjectSet(this.wpilibFieldCoordinateGroup);
       this.coneBlueFrontSet = new ObjectSet(this.wpilibFieldCoordinateGroup);
       this.coneBlueCenterSet = new ObjectSet(this.wpilibFieldCoordinateGroup);
@@ -272,8 +285,12 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       this.coneYellowBackSet = new ObjectSet(this.wpilibFieldCoordinateGroup);
       this.zebraMarkerBlueSet = new ObjectSet(this.wpilibZebraCoordinateGroup);
       this.zebraMarkerRedSet = new ObjectSet(this.wpilibZebraCoordinateGroup);
-      this.zebraGreenGhostSet = new ObjectSet(this.wpilibZebraCoordinateGroup);
-      this.zebraYellowGhostSet = new ObjectSet(this.wpilibZebraCoordinateGroup);
+      ThreeDimensionVisualizer.GHOST_COLORS.forEach((color) => {
+        this.zebraGhostSets[color] = new ObjectSet(this.wpilibZebraCoordinateGroup);
+      });
+      for (let i = 0; i < 6; i++) {
+        this.gamePieceSets.push(new ObjectSet(this.wpilibFieldCoordinateGroup));
+      }
     }
 
     // Create axes template
@@ -441,19 +458,19 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     }
 
     // Define ghost materials
-    this.greenGhostMaterial = new THREE.MeshPhongMaterial({
-      color: 0x00ff00,
-      transparent: true,
-      opacity: 0.35,
-      specular: this.MATERIAL_SPECULAR,
-      shininess: this.MATERIAL_SHININESS
-    });
-    this.yellowGhostMaterial = new THREE.MeshPhongMaterial({
-      color: 0xffff00,
-      transparent: true,
-      opacity: 0.35,
-      specular: this.MATERIAL_SPECULAR,
-      shininess: this.MATERIAL_SHININESS
+    [
+      ["Green", 0x00ff00],
+      ["Yellow", 0xffff00],
+      ["Blue", 0x0000ff],
+      ["Red", 0xff0000]
+    ].forEach(([name, color]) => {
+      this.ghostMaterials[name] = new THREE.MeshPhongMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.35,
+        specular: this.MATERIAL_SPECULAR,
+        shininess: this.MATERIAL_SHININESS
+      });
     });
 
     // Render when camera is moved
@@ -486,6 +503,24 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     // sets selected position on field (right click) in WPI field relative values
     window.setNt4(this.clickToGoKey, [-(intersects.x - 8.25), intersects.z + 4, 0], "double[]");
   }
+  saveState() {
+    return {
+      cameraIndex: this.cameraIndex,
+      orbitFov: this.orbitFov,
+      cameraPosition: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
+      cameraTarget: [this.controls.target.x, this.controls.target.y, this.controls.target.z]
+    };
+  }
+
+  restoreState(state: any): void {
+    this.cameraIndex = state.cameraIndex;
+    this.orbitFov = state.orbitFov;
+    this.camera.position.set(state.cameraPosition[0], state.cameraPosition[1], state.cameraPosition[2]);
+    this.controls.target.set(state.cameraTarget[0], state.cameraTarget[1], state.cameraTarget[2]);
+    this.controls.update();
+    this.lastCameraIndex = this.cameraIndex; // Don't reset camera position
+    this.shouldRender = true;
+  }
 
   /** Switches the selected camera. */
   set3DCamera(index: number) {
@@ -497,19 +532,6 @@ export default class ThreeDimensionVisualizer implements Visualizer {
   setFov(fov: number) {
     this.orbitFov = clampValue(fov, this.MIN_ORBIT_FOV, this.MAX_ORBIT_FOV);
     this.shouldRender = true;
-  }
-
-  /** Returns the camera and target positions. */
-  get cameraPositions(): [THREE.Vector3, THREE.Vector3] {
-    return [this.camera.position.clone(), this.controls.target.clone()];
-  }
-
-  /** Sets the camera and target positions. */
-  set cameraPositions(value: [THREE.Vector3, THREE.Vector3]) {
-    this.camera.position.copy(value[0]);
-    this.controls.target.copy(value[1]);
-    this.controls.update();
-    this.lastCameraIndex = this.cameraIndex; // Don't reset camera position
   }
 
   render(command: any): number | null {
@@ -531,6 +553,7 @@ export default class ThreeDimensionVisualizer implements Visualizer {
   /** Resets the camera position and controls target. */
   private resetCamera() {
     if (this.cameraIndex === -1) {
+      // Orbit field
       if (this.command && this.command.options.field === "Axes") {
         this.camera.position.copy(this.ORBIT_AXES_DEFAULT_POSITION);
         this.controls.target.copy(this.ORBIT_AXES_DEFAULT_TARGET);
@@ -539,10 +562,68 @@ export default class ThreeDimensionVisualizer implements Visualizer {
         this.controls.target.copy(this.ORBIT_FIELD_DEFAULT_TARGET);
       }
     } else if (this.cameraIndex === -2) {
+      // Orbit robot
       this.camera.position.copy(this.ORBIT_ROBOT_DEFAULT_POSITION);
       this.controls.target.copy(this.ORBIT_ROBOT_DEFAULT_TARGET);
+    } else {
+      // Driver Station
+      let fieldConfig = this.getFieldConfig();
+      if (fieldConfig !== null) {
+        let driverStation = -1;
+        if (this.cameraIndex < -3) {
+          driverStation = -4 - this.cameraIndex;
+        } else {
+          driverStation = this.command.autoDriverStation;
+        }
+        if (driverStation >= 0) {
+          let position = fieldConfig.driverStations[driverStation];
+          this.dsCameraGroup.position.set(position[0], position[1], 0);
+          this.dsCameraGroup.rotation.set(0, 0, Math.atan2(-position[1], -position[0]));
+          this.camera.position.copy(this.dsCameraObj.getWorldPosition(new THREE.Vector3()));
+          this.camera.rotation.setFromQuaternion(this.dsCameraObj.getWorldQuaternion(new THREE.Quaternion()));
+          this.controls.target.copy(this.ORBIT_FIELD_DEFAULT_TARGET); // Look at the center of the field
+        }
+      }
     }
     this.controls.update();
+  }
+
+  private getFieldConfig(): Config3dField | null {
+    let fieldTitle = this.command.options.field;
+    if (fieldTitle === "Evergreen") {
+      return {
+        name: "Evergreen",
+        path: "",
+        rotations: [],
+        widthInches: convert(STANDARD_FIELD_LENGTH, "meters", "inches"),
+        heightInches: convert(STANDARD_FIELD_WIDTH, "meters", "inches"),
+        defaultOrigin: "auto",
+        driverStations: DEFAULT_DRIVER_STATIONS,
+        gamePieces: []
+      };
+    } else if (fieldTitle === "Axes") {
+      return {
+        name: "Axes",
+        path: "",
+        rotations: [],
+        widthInches: convert(STANDARD_FIELD_LENGTH, "meters", "inches"),
+        heightInches: convert(STANDARD_FIELD_WIDTH, "meters", "inches"),
+        defaultOrigin: "blue",
+        driverStations: DEFAULT_DRIVER_STATIONS,
+        gamePieces: []
+      };
+    } else {
+      let fieldConfig = window.assets?.field3ds.find((fieldData) => fieldData.name === fieldTitle);
+      if (fieldConfig === undefined) return null;
+      return fieldConfig;
+    }
+  }
+
+  private getRobotConfig(): Config3dRobot | null {
+    let robotTitle = this.command.options.robot;
+    let robotConfig = window.assets?.robots.find((robotData) => robotData.name === robotTitle);
+    if (robotConfig === undefined) return null;
+    return robotConfig;
   }
 
   private renderFrame() {
@@ -587,36 +668,11 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     // Get config
     let fieldTitle = this.command.options.field;
     let robotTitle = this.command.options.robot;
-    let fieldConfig: Config3dField;
-    let robotConfig: Config3dRobot;
-    if (fieldTitle === "Evergreen") {
-      fieldConfig = {
-        name: "Evergreen",
-        path: "",
-        rotations: [],
-        widthInches: convert(this.STANDARD_FIELD_LENGTH, "meters", "inches"),
-        heightInches: convert(this.STANDARD_FIELD_WIDTH, "meters", "inches"),
-        defaultOrigin: "auto"
-      };
-    } else if (fieldTitle === "Axes") {
-      fieldConfig = {
-        name: "Axes",
-        path: "",
-        rotations: [],
-        widthInches: convert(this.STANDARD_FIELD_LENGTH, "meters", "inches"),
-        heightInches: convert(this.STANDARD_FIELD_WIDTH, "meters", "inches"),
-        defaultOrigin: "blue"
-      };
-    } else {
-      let fieldConfigTmp = window.assets?.field3ds.find((fieldData) => fieldData.name === fieldTitle);
-      if (fieldConfigTmp === undefined) return;
-      fieldConfig = fieldConfigTmp;
-    }
-    {
-      let robotConfigTmp = window.assets?.robots.find((robotData) => robotData.name === robotTitle);
-      if (robotConfigTmp === undefined) return;
-      robotConfig = robotConfigTmp;
-    }
+    let fieldConfigTmp = this.getFieldConfig();
+    let robotConfigTmp = this.getRobotConfig();
+    if (fieldConfigTmp === null || robotConfigTmp === null) return;
+    let fieldConfig = fieldConfigTmp;
+    let robotConfig = robotConfigTmp;
 
     // Check for new assets
     let assetsString = JSON.stringify(window.assets);
@@ -625,17 +681,26 @@ export default class ThreeDimensionVisualizer implements Visualizer {
 
     // Update field
     if (fieldTitle !== this.lastFieldTitle || newAssets) {
+      // Delete old field
       if (this.field) {
         this.wpilibCoordinateGroup.remove(this.field);
         disposeObject(this.field);
       }
+
+      // Delete old game pieces
+      this.gamePieceSets.forEach((set) => {
+        set.setPoses([]);
+        set.setSource(new THREE.Object3D());
+      });
+
+      // Load new field
       if (fieldTitle === "Evergreen") {
         this.field = new THREE.Group();
         this.wpilibCoordinateGroup.add(this.field);
 
         // Floor
         let carpet = new THREE.Mesh(
-          new THREE.PlaneGeometry(this.STANDARD_FIELD_LENGTH + 4, this.STANDARD_FIELD_WIDTH + 1),
+          new THREE.PlaneGeometry(STANDARD_FIELD_LENGTH + 4, STANDARD_FIELD_WIDTH + 1),
           new THREE.MeshPhongMaterial({ color: 0x888888, side: THREE.DoubleSide })
         );
         carpet.name = "carpet";
@@ -643,10 +708,10 @@ export default class ThreeDimensionVisualizer implements Visualizer {
 
         // Guardrails
         const guardrailHeight = convert(20, "inches", "meters");
-        [-this.STANDARD_FIELD_WIDTH / 2, this.STANDARD_FIELD_WIDTH / 2].forEach((y) => {
+        [-STANDARD_FIELD_WIDTH / 2, STANDARD_FIELD_WIDTH / 2].forEach((y) => {
           [0, guardrailHeight].forEach((z) => {
             let guardrail = new THREE.Mesh(
-              new THREE.CylinderGeometry(0.02, 0.02, this.STANDARD_FIELD_LENGTH, 12),
+              new THREE.CylinderGeometry(0.02, 0.02, STANDARD_FIELD_LENGTH, 12),
               new THREE.MeshPhongMaterial({ color: 0xdddddd })
             );
             this.field!.add(guardrail);
@@ -655,7 +720,7 @@ export default class ThreeDimensionVisualizer implements Visualizer {
           });
           {
             let panel = new THREE.Mesh(
-              new THREE.PlaneGeometry(this.STANDARD_FIELD_LENGTH, guardrailHeight),
+              new THREE.PlaneGeometry(STANDARD_FIELD_LENGTH, guardrailHeight),
               new THREE.MeshPhongMaterial({
                 color: 0xffffff,
                 side: THREE.DoubleSide,
@@ -667,12 +732,8 @@ export default class ThreeDimensionVisualizer implements Visualizer {
             panel.rotateX(Math.PI / 2);
             panel.position.set(0, y, guardrailHeight / 2);
           }
-          for (
-            let x = -this.STANDARD_FIELD_LENGTH / 2;
-            x < this.STANDARD_FIELD_LENGTH / 2;
-            x += this.STANDARD_FIELD_LENGTH / 16
-          ) {
-            if (x === -this.STANDARD_FIELD_LENGTH / 2) continue;
+          for (let x = -STANDARD_FIELD_LENGTH / 2; x < STANDARD_FIELD_LENGTH / 2; x += STANDARD_FIELD_LENGTH / 16) {
+            if (x === -STANDARD_FIELD_LENGTH / 2) continue;
             let guardrail = new THREE.Mesh(
               new THREE.CylinderGeometry(0.02, 0.02, guardrailHeight, 12),
               new THREE.MeshPhongMaterial({ color: 0xdddddd })
@@ -684,20 +745,20 @@ export default class ThreeDimensionVisualizer implements Visualizer {
         });
 
         // Alliance stations
-        const allianceStationWidth = convert(69, "inches", "meters");
+        const allianceStationWidth = ALLIANCE_STATION_WIDTH;
         const allianceStationHeight = convert(78, "inches", "meters");
         const allianceStationSolidHeight = convert(36.75, "inches", "meters");
         const allianceStationShelfDepth = convert(12.25, "inches", "meters");
-        const fillerWidth = (this.STANDARD_FIELD_WIDTH - allianceStationWidth * 3) / 2;
+        const fillerWidth = (STANDARD_FIELD_WIDTH - allianceStationWidth * 3) / 2;
         const blueColor = 0x6379a6;
         const redColor = 0xa66363;
-        [-this.STANDARD_FIELD_LENGTH / 2, this.STANDARD_FIELD_LENGTH / 2].forEach((x) => {
+        [-STANDARD_FIELD_LENGTH / 2, STANDARD_FIELD_LENGTH / 2].forEach((x) => {
           [0, allianceStationSolidHeight, allianceStationHeight].forEach((z) => {
             let guardrail = new THREE.Mesh(
               new THREE.CylinderGeometry(
                 0.02,
                 0.02,
-                z === allianceStationSolidHeight ? allianceStationWidth * 3 : this.STANDARD_FIELD_WIDTH,
+                z === allianceStationSolidHeight ? allianceStationWidth * 3 : STANDARD_FIELD_WIDTH,
                 12
               ),
               new THREE.MeshPhongMaterial({ color: 0xdddddd })
@@ -706,12 +767,12 @@ export default class ThreeDimensionVisualizer implements Visualizer {
             guardrail.position.set(x, 0, z);
           });
           [
-            -this.STANDARD_FIELD_WIDTH / 2,
+            -STANDARD_FIELD_WIDTH / 2,
             allianceStationWidth * -1.5,
             allianceStationWidth * -0.5,
             allianceStationWidth * 0.5,
             allianceStationWidth * 1.5,
-            this.STANDARD_FIELD_WIDTH / 2
+            STANDARD_FIELD_WIDTH / 2
           ].forEach((y) => {
             let guardrail = new THREE.Mesh(
               new THREE.CylinderGeometry(0.02, 0.02, allianceStationHeight, 12),
@@ -721,17 +782,15 @@ export default class ThreeDimensionVisualizer implements Visualizer {
             guardrail.rotateX(Math.PI / 2);
             guardrail.position.set(x, y, allianceStationHeight / 2);
           });
-          [-this.STANDARD_FIELD_WIDTH / 2 + fillerWidth / 2, this.STANDARD_FIELD_WIDTH / 2 - fillerWidth / 2].forEach(
-            (y) => {
-              let filler = new THREE.Mesh(
-                new THREE.PlaneGeometry(allianceStationHeight, fillerWidth),
-                new THREE.MeshPhongMaterial({ color: x < 0 ? blueColor : redColor, side: THREE.DoubleSide })
-              );
-              this.field!.add(filler);
-              filler.rotateY(Math.PI / 2);
-              filler.position.set(x, y, allianceStationHeight / 2);
-            }
-          );
+          [-STANDARD_FIELD_WIDTH / 2 + fillerWidth / 2, STANDARD_FIELD_WIDTH / 2 - fillerWidth / 2].forEach((y) => {
+            let filler = new THREE.Mesh(
+              new THREE.PlaneGeometry(allianceStationHeight, fillerWidth),
+              new THREE.MeshPhongMaterial({ color: x < 0 ? blueColor : redColor, side: THREE.DoubleSide })
+            );
+            this.field!.add(filler);
+            filler.rotateY(Math.PI / 2);
+            filler.position.set(x, y, allianceStationHeight / 2);
+          });
           {
             let allianceWall = new THREE.Mesh(
               new THREE.PlaneGeometry(allianceStationSolidHeight, allianceStationWidth * 3),
@@ -794,15 +853,15 @@ export default class ThreeDimensionVisualizer implements Visualizer {
         this.field = new THREE.Group();
         this.wpilibCoordinateGroup.add(this.field);
         let axes = this.axesTemplate.clone(true);
-        axes.position.set(-this.STANDARD_FIELD_LENGTH / 2, -this.STANDARD_FIELD_WIDTH / 2, 0);
+        axes.position.set(-STANDARD_FIELD_LENGTH / 2, -STANDARD_FIELD_WIDTH / 2, 0);
         this.field.add(axes);
         let outline = new THREE.Line(
           new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-this.STANDARD_FIELD_LENGTH / 2, -this.STANDARD_FIELD_WIDTH / 2, 0),
-            new THREE.Vector3(this.STANDARD_FIELD_LENGTH / 2, -this.STANDARD_FIELD_WIDTH / 2, 0),
-            new THREE.Vector3(this.STANDARD_FIELD_LENGTH / 2, this.STANDARD_FIELD_WIDTH / 2, 0),
-            new THREE.Vector3(-this.STANDARD_FIELD_LENGTH / 2, this.STANDARD_FIELD_WIDTH / 2, 0),
-            new THREE.Vector3(-this.STANDARD_FIELD_LENGTH / 2, -this.STANDARD_FIELD_WIDTH / 2, 0)
+            new THREE.Vector3(-STANDARD_FIELD_LENGTH / 2, -STANDARD_FIELD_WIDTH / 2, 0),
+            new THREE.Vector3(STANDARD_FIELD_LENGTH / 2, -STANDARD_FIELD_WIDTH / 2, 0),
+            new THREE.Vector3(STANDARD_FIELD_LENGTH / 2, STANDARD_FIELD_WIDTH / 2, 0),
+            new THREE.Vector3(-STANDARD_FIELD_LENGTH / 2, STANDARD_FIELD_WIDTH / 2, 0),
+            new THREE.Vector3(-STANDARD_FIELD_LENGTH / 2, -STANDARD_FIELD_WIDTH / 2, 0)
           ]),
           new THREE.LineBasicMaterial({ color: 0x444444 })
         );
@@ -812,50 +871,73 @@ export default class ThreeDimensionVisualizer implements Visualizer {
         this.shouldRender = true;
       } else {
         const loader = new GLTFLoader();
-        loader.load(fieldConfig.path, (gltf) => {
+        Promise.all([
+          new Promise((resolve) => {
+            loader.load(fieldConfig.path, resolve);
+          }),
+          ...fieldConfig.gamePieces.map(
+            (_, index) =>
+              new Promise((resolve) => {
+                loader.load(fieldConfig.path.slice(0, -4) + "_" + index.toString() + ".glb", resolve);
+              })
+          )
+        ]).then((gltfs) => {
+          let gltfScenes = (gltfs as GLTF[]).map((gltf) => gltf.scene);
           if (fieldConfig === undefined) return;
-
-          // Add to scene
-          this.field = gltf.scene;
-          this.field.traverse((node: any) => {
-            let mesh = node as THREE.Mesh; // Traverse function returns Object3d or Mesh
-            if (mesh.isMesh && mesh.material instanceof MeshStandardMaterial) {
-              if (this.mode === "cinematic") {
-                // Cinematic, replace with MeshPhongMaterial
-                let newMaterial = new THREE.MeshPhongMaterial({
-                  color: mesh.material.color,
-                  transparent: mesh.material.transparent,
-                  opacity: mesh.material.opacity,
-                  specular: this.MATERIAL_SPECULAR,
-                  shininess: this.MATERIAL_SHININESS
-                });
-                if (mesh.name.toLowerCase().includes("carpet")) {
-                  newMaterial.shininess = 0;
-                  mesh.castShadow = false;
-                  mesh.receiveShadow = true;
+          gltfScenes.forEach((scene, index) => {
+            // Apply adjustments
+            scene.traverse((node: any) => {
+              let mesh = node as THREE.Mesh; // Traverse function returns Object3d or Mesh
+              if (mesh.isMesh && mesh.material instanceof MeshStandardMaterial) {
+                if (this.mode === "cinematic") {
+                  // Cinematic, replace with MeshPhongMaterial
+                  let newMaterial = new THREE.MeshPhongMaterial({
+                    color: mesh.material.color,
+                    transparent: mesh.material.transparent,
+                    opacity: mesh.material.opacity,
+                    specular: this.MATERIAL_SPECULAR,
+                    shininess: this.MATERIAL_SHININESS
+                  });
+                  if (mesh.name.toLowerCase().includes("carpet")) {
+                    newMaterial.shininess = 0;
+                    mesh.castShadow = false;
+                    mesh.receiveShadow = true;
+                  } else {
+                    mesh.castShadow = !mesh.material.transparent;
+                    mesh.receiveShadow = !mesh.material.transparent;
+                  }
+                  mesh.material.dispose();
+                  mesh.material = newMaterial;
                 } else {
-                  mesh.castShadow = !mesh.material.transparent;
-                  mesh.receiveShadow = !mesh.material.transparent;
+                  // Not cinematic, disable metalness and roughness
+                  mesh.material.metalness = 0;
+                  mesh.material.roughness = 1;
                 }
-                mesh.material.dispose();
-                mesh.material = newMaterial;
-              } else {
-                // Not cinematic, disable metalness and roughness
-                mesh.material.metalness = 0;
-                mesh.material.roughness = 1;
               }
+            });
+
+            // Add to scene
+            if (index === 0) {
+              this.field = scene;
+              this.field.rotation.setFromQuaternion(getQuaternionFromRotSeq(fieldConfig.rotations));
+              this.wpilibCoordinateGroup.add(this.field);
+            } else {
+              let gamePieceConfig = fieldConfig.gamePieces[index - 1];
+              let gamePieceGroup = new THREE.Group();
+              gamePieceGroup.add(scene);
+              scene.rotation.setFromQuaternion(getQuaternionFromRotSeq(gamePieceConfig.rotations));
+              scene.position.set(...gamePieceConfig.position);
+              this.gamePieceSets[index - 1].setSource(gamePieceGroup);
             }
           });
-          this.field.rotation.setFromQuaternion(getQuaternionFromRotSeq(fieldConfig.rotations));
-          this.wpilibCoordinateGroup.add(this.field);
 
           // Render new frame
           this.shouldRender = true;
         });
       }
 
-      // Reset camera if switching between axis and non-axis
-      if ((fieldTitle === "Axes") !== (this.lastFieldTitle === "Axes")) {
+      // Reset camera if switching between axis and non-axis or if using DS camera
+      if ((fieldTitle === "Axes") !== (this.lastFieldTitle === "Axes") || this.cameraIndex < -2) {
         this.resetCamera();
       }
       this.lastFieldTitle = fieldTitle;
@@ -881,8 +963,10 @@ export default class ThreeDimensionVisualizer implements Visualizer {
 
         // Update model materials and set up groups
         let robotGroup = new THREE.Group();
-        let greenGhostGroup = new THREE.Group();
-        let yellowGhostGroup = new THREE.Group();
+        let ghostGroups: { [key: string]: THREE.Group } = {};
+        ThreeDimensionVisualizer.GHOST_COLORS.forEach((color) => {
+          ghostGroups[color] = new THREE.Group();
+        });
         gltfScenes.forEach((originalScene, index) => {
           originalScene.traverse((node: any) => {
             // Adjust materials
@@ -908,68 +992,63 @@ export default class ThreeDimensionVisualizer implements Visualizer {
               }
             }
           });
-          let greenGhostScene = originalScene.clone(true);
-          let yellowGhostScene = originalScene.clone(true);
-          greenGhostScene.traverse((node: any) => {
-            let mesh = node as THREE.Mesh; // Traverse function returns Object3d or Mesh
-            if (mesh.isMesh) {
-              mesh.material = this.greenGhostMaterial.clone();
-            }
-          });
-          yellowGhostScene.traverse((node: any) => {
-            let mesh = node as THREE.Mesh; // Traverse function returns Object3d or Mesh
-            if (mesh.isMesh) {
-              mesh.material = this.yellowGhostMaterial.clone();
-            }
-          });
-          let sceneList = [originalScene, greenGhostScene, yellowGhostScene];
-          // Set up groups
-          [0, 1, 2].forEach((i: number) => {
-            let scene = sceneList[i];
+
+          // Add to robot group
+          if (index === 0) {
+            // Root model, set position and add directly
+            robotGroup.add(originalScene);
+            originalScene.rotation.setFromQuaternion(getQuaternionFromRotSeq(robotConfig.rotations));
+            originalScene.position.set(...robotConfig.position);
+          } else {
+            // Component model, add name and store in group
+            let componentGroup = new THREE.Group();
+            componentGroup.name = "AdvantageScope_Component" + (index - 1).toString();
+            componentGroup.add(originalScene);
+            robotGroup.add(componentGroup);
+          }
+
+          // Create ghosts and add to groups
+          ThreeDimensionVisualizer.GHOST_COLORS.forEach((color) => {
+            let ghostScene = originalScene.clone(true);
+            ghostScene.traverse((node: any) => {
+              let mesh = node as THREE.Mesh; // Traverse function returns Object3d or Mesh
+              if (mesh.isMesh) {
+                mesh.material = this.ghostMaterials[color].clone();
+              }
+            });
+
             if (index === 0) {
               // Root model, set position and add directly
-              if (i === 0) {
-                robotGroup.add(scene);
-              } else if (i === 1) {
-                greenGhostGroup.add(scene);
-              } else {
-                yellowGhostGroup.add(scene);
-              }
-              scene.rotation.setFromQuaternion(getQuaternionFromRotSeq(robotConfig.rotations));
-              scene.position.set(...robotConfig.position);
+              ghostGroups[color].add(ghostScene);
+              ghostScene.rotation.setFromQuaternion(getQuaternionFromRotSeq(robotConfig.rotations));
+              ghostScene.position.set(...robotConfig.position);
             } else {
               // Component model, add name and store in group
               let componentGroup = new THREE.Group();
               componentGroup.name = "AdvantageScope_Component" + (index - 1).toString();
-              componentGroup.add(scene);
-              if (i === 0) {
-                robotGroup.add(componentGroup);
-              } else if (i === 1) {
-                greenGhostGroup.add(componentGroup);
-              } else {
-                yellowGhostGroup.add(componentGroup);
-              }
+              componentGroup.add(ghostScene);
+              ghostGroups[color].add(componentGroup);
             }
           });
         });
 
         // Add mechanism roots
         let robotMechanismRoot = new THREE.Group();
-        let greenGhostMechanismRoot = new THREE.Group();
-        let yellowGhostMechanismRoot = new THREE.Group();
         robotMechanismRoot.name = "AdvantageScope_MechanismRoot";
-        greenGhostMechanismRoot.name = "AdvantageScope_MechanismRoot";
-        yellowGhostMechanismRoot.name = "AdvantageScope_MechanismRoot";
         robotGroup.add(robotMechanismRoot);
-        greenGhostGroup.add(greenGhostMechanismRoot);
-        yellowGhostGroup.add(yellowGhostMechanismRoot);
+        let ghostMechanismRoots: { [key: string]: THREE.Group } = {};
+        ThreeDimensionVisualizer.GHOST_COLORS.forEach((color) => {
+          ghostMechanismRoots[color] = new THREE.Group();
+          ghostMechanismRoots[color].name = "AdvantageScope_MechanismRoot";
+          ghostGroups[color].add(ghostMechanismRoots[color]);
+        });
 
         // Update robot sets
         this.robotSet.setSource(robotGroup);
-        this.greenGhostSet.setSource(greenGhostGroup);
-        this.yellowGhostSet.setSource(yellowGhostGroup);
-        this.zebraGreenGhostSet.setSource(greenGhostGroup);
-        this.zebraYellowGhostSet.setSource(yellowGhostGroup);
+        ThreeDimensionVisualizer.GHOST_COLORS.forEach((color) => {
+          this.ghostSets[color].setSource(ghostGroups[color]);
+          this.zebraGhostSets[color].setSource(ghostGroups[color]);
+        });
 
         // Render new frame
         this.shouldRender = true;
@@ -987,7 +1066,7 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       );
       this.wpilibZebraCoordinateGroup.setRotationFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI);
       if (fieldConfig.name === "Axes") {
-        this.wpilibZebraCoordinateGroup.position.set(this.STANDARD_FIELD_LENGTH, this.STANDARD_FIELD_WIDTH, 0);
+        this.wpilibZebraCoordinateGroup.position.set(STANDARD_FIELD_LENGTH, STANDARD_FIELD_WIDTH, 0);
       } else {
         this.wpilibZebraCoordinateGroup.position.set(
           convert(fieldConfig.widthInches / 2, "inches", "meters"),
@@ -999,20 +1078,24 @@ export default class ThreeDimensionVisualizer implements Visualizer {
 
     // Update robot poses (max of 6 poses each)
     this.robotSet.setPoses(this.command.poses.robot.slice(0, 7));
-    this.greenGhostSet.setPoses(this.command.poses.greenGhost.slice(0, 7));
-    this.yellowGhostSet.setPoses(this.command.poses.yellowGhost.slice(0, 7));
-    this.zebraGreenGhostSet.setPoses(this.command.poses.zebraGreenGhost.slice(0, 7));
-    this.zebraYellowGhostSet.setPoses(this.command.poses.zebraYellowGhost.slice(0, 7));
+    ThreeDimensionVisualizer.GHOST_COLORS.forEach((color) => {
+      this.ghostSets[color].setPoses(this.command.poses.ghost[color].slice(0, 7));
+      this.zebraGhostSets[color].setPoses(this.command.poses.zebraGhost[color].slice(0, 7));
+    });
 
     // Update robot components
     if (robotConfig && robotConfig.components.length > 0) {
       (
         [
           [this.robotSet, this.command.poses.componentRobot],
-          [this.greenGhostSet, this.command.poses.componentGreenGhost],
-          [this.yellowGhostSet, this.command.poses.componentYellowGhost],
-          [this.zebraGreenGhostSet, this.command.poses.componentGreenGhost],
-          [this.zebraYellowGhostSet, this.command.poses.componentYellowGhost]
+          ...ThreeDimensionVisualizer.GHOST_COLORS.map((color) => [
+            this.ghostSets[color],
+            this.command.poses.componentGhost
+          ]),
+          ...ThreeDimensionVisualizer.GHOST_COLORS.map((color) => [
+            this.zebraGhostSets[color],
+            this.command.poses.componentGhost
+          ])
         ] as [ObjectSet, Pose3d[]][]
       ).forEach(([objectSet, poseData]) => {
         objectSet.getChildren().forEach((childRobot) => {
@@ -1061,15 +1144,18 @@ export default class ThreeDimensionVisualizer implements Visualizer {
             }),
           true
         ],
-        [this.greenGhostSet, this.command.poses.mechanismGreenGhost, () => this.greenGhostMaterial.clone(), false],
-        [this.yellowGhostSet, this.command.poses.mechanismYellowGhost, () => this.yellowGhostMaterial.clone(), false],
-        [this.zebraGreenGhostSet, this.command.poses.mechanismGreenGhost, () => this.greenGhostMaterial.clone(), false],
-        [
-          this.zebraYellowGhostSet,
-          this.command.poses.mechanismYellowGhost,
-          () => this.yellowGhostMaterial.clone(),
+        ...ThreeDimensionVisualizer.GHOST_COLORS.map((color) => [
+          this.ghostSets[color],
+          this.command.poses.mechanismGhost,
+          () => this.ghostMaterials[color].clone(),
           false
-        ]
+        ]),
+        ...ThreeDimensionVisualizer.GHOST_COLORS.map((color) => [
+          this.zebraGhostSets[color],
+          this.command.poses.mechanismGhost,
+          () => this.ghostMaterials[color].clone(),
+          false
+        ])
       ] as [ObjectSet, MechanismState | null, () => THREE.MeshPhongMaterial, boolean][]
     ).forEach(([objectSet, state, getMaterial, updateColors]) => {
       objectSet.getChildren().forEach((childRobot) => {
@@ -1277,6 +1363,21 @@ export default class ThreeDimensionVisualizer implements Visualizer {
     this.coneYellowCenterSet.setPoses(this.command.poses.coneYellowCenter);
     this.coneYellowBackSet.setPoses(this.command.poses.coneYellowBack);
 
+    // Update game pieces
+    (this.command.poses.gamePiece as Pose3d[][]).forEach((gamePiecePoses, index) => {
+      this.gamePieceSets[index].setPoses(gamePiecePoses);
+    });
+    fieldConfig.gamePieces.forEach((gamePieceConfig) => {
+      gamePieceConfig.stagedObjects.forEach((objectName) => {
+        if (this.field !== null) {
+          let object = this.field.getObjectByName(objectName);
+          if (object) {
+            object.visible = !this.command.hasUserGamePieces;
+          }
+        }
+      });
+    });
+
     // Update Zebra markers
     let bluePoses = Object.values(this.command.poses.zebraMarker)
       .filter((x: any) => x.alliance === "blue")
@@ -1321,7 +1422,8 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       if (this.cameraIndex >= robotConfig.cameras.length) this.cameraIndex = -1;
 
       // Update camera controls
-      let orbitalCamera = this.cameraIndex < 0;
+      let orbitalCamera = this.cameraIndex === -1 || this.cameraIndex === -2;
+      let dsCamera = this.cameraIndex < -2;
       if (orbitalCamera !== this.controls.enabled) {
         this.controls.enabled = orbitalCamera;
         this.controls.update();
@@ -1330,14 +1432,14 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       // Update container and camera based on mode
       let fov = this.orbitFov;
       this.lastAspectRatio = null;
-      if (orbitalCamera) {
+      if (orbitalCamera || dsCamera) {
         this.canvas.classList.remove("fixed");
         this.annotationsDiv.classList.remove("fixed");
         this.canvas.style.width = "";
         this.canvas.style.height = "";
         this.annotationsDiv.style.width = "";
         this.annotationsDiv.style.height = "";
-        if (this.cameraIndex === -1) {
+        if (this.cameraIndex === -1 || dsCamera) {
           // Reset to default origin
           this.wpilibCoordinateGroup.position.set(0, 0, 0);
           this.wpilibCoordinateGroup.rotation.setFromQuaternion(this.WPILIB_ROTATION);
@@ -1353,7 +1455,10 @@ export default class ThreeDimensionVisualizer implements Visualizer {
           this.wpilibCoordinateGroup.position.copy(position.clone().applyQuaternion(rotation));
           this.wpilibCoordinateGroup.rotation.setFromQuaternion(rotation);
         }
-        if (this.cameraIndex !== this.lastCameraIndex) {
+        if (
+          this.cameraIndex !== this.lastCameraIndex ||
+          (this.cameraIndex === -3 && this.lastAutoDriverStation !== this.command.autoDriverStation)
+        ) {
           this.resetCamera();
         }
       } else {
@@ -1410,16 +1515,18 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       // Update camera alert
       if (this.cameraIndex === -2) {
         this.alert.hidden = this.command.poses.robot.length > 0;
-        this.alertCamera.innerText = "Orbit Robot";
-      } else if (this.cameraIndex === -1) {
+        this.alert.innerHTML = 'Robot pose not available</br>for camera "Orbit Robot".';
+      } else if (this.cameraIndex === -3) {
+        this.alert.hidden = this.command.autoDriverStation >= 0;
+        this.alert.innerHTML = "Driver Station position</br>not available.";
+      } else if (this.cameraIndex === -1 || dsCamera) {
         this.alert.hidden = true;
       } else {
         this.alert.hidden = this.command.poses.robot.length > 0 || this.command.poses.cameraOverride.length > 0;
-        if (robotConfig) {
-          this.alertCamera.innerText = robotConfig.cameras[this.cameraIndex].name;
-        } else {
-          this.alertCamera.innerText = "???";
-        }
+        this.alert.innerHTML =
+          'Robot pose not available</br>for camera "' +
+          (robotConfig ? robotConfig.cameras[this.cameraIndex].name : "???") +
+          '".';
       }
 
       // Update camera FOV
@@ -1429,6 +1536,7 @@ export default class ThreeDimensionVisualizer implements Visualizer {
       }
 
       this.lastCameraIndex = this.cameraIndex;
+      this.lastAutoDriverStation = this.command.autoDriverStation;
     }
 
     // Render new frame
@@ -1463,6 +1571,7 @@ class ObjectSet {
   private children: THREE.Object3D[] = [];
   private poses: Pose3d[] = [];
   private displayedPoses = 0;
+  private hidden = false;
 
   constructor(parent: THREE.Object3D) {
     this.parent = parent;
@@ -1491,7 +1600,9 @@ class ObjectSet {
 
     // Clone new children
     while (this.children.length < poses.length) {
-      this.children.push(this.source.clone(true));
+      let child = this.source.clone(true);
+      child.visible = !this.hidden;
+      this.children.push(child);
     }
 
     // Remove extra children from parent
@@ -1511,6 +1622,13 @@ class ObjectSet {
       this.children[i].position.set(...poses[i].translation);
       this.children[i].rotation.setFromQuaternion(rotation3dToQuaternion(poses[i].rotation));
     }
+  }
+
+  /** Sets whether to hide all of the objects. */
+  setHidden(hidden: boolean) {
+    this.children.forEach((child) => {
+      child.visible = !hidden;
+    });
   }
 
   /** Returns the set of cloned objects. */

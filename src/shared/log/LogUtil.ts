@@ -1,3 +1,4 @@
+import Fuse from "fuse.js";
 import { Rotation2d, Translation2d } from "../geometry";
 import MatchInfo, { MatchType } from "../MatchInfo";
 import { convert } from "../units";
@@ -28,6 +29,11 @@ export const ALLIANCE_KEYS = withMergedKeys([
   "/DriverStation/AllianceStation",
   "NT:/AdvantageKit/DriverStation/AllianceStation",
   "NT:/FMSInfo/IsRedAlliance"
+]);
+export const DRIVER_STATION_KEYS = withMergedKeys([
+  "/DriverStation/AllianceStation",
+  "NT:/AdvantageKit/DriverStation/AllianceStation",
+  "NT:/FMSInfo/StationNumber"
 ]);
 export const JOYSTICK_KEYS = withMergedKeys([
   "/DriverStation/Joystick",
@@ -188,7 +194,7 @@ export function getIsRedAlliance(log: Log, time: number): boolean {
     // Integer value (station) from AdvantageKit
     let tempAllianceData = log.getNumber(allianceKey, time, time);
     if (tempAllianceData && tempAllianceData.values.length > 0) {
-      return tempAllianceData.values[tempAllianceData.values.length - 1] <= 2;
+      return tempAllianceData.values[tempAllianceData.values.length - 1] <= 3;
     }
   } else {
     // Boolean value from NT
@@ -199,6 +205,54 @@ export function getIsRedAlliance(log: Log, time: number): boolean {
   }
 
   return false;
+}
+
+export function getDriverStation(log: Log, time: number): number {
+  let dsKey = DRIVER_STATION_KEYS.find((key) => log.getFieldKeys().includes(key));
+  if (!dsKey) return -1;
+  let tempDSData = log.getNumber(dsKey, time, time);
+  if (tempDSData && tempDSData.values.length > 0) {
+    let value = tempDSData.values[tempDSData.values.length - 1];
+    if (dsKey.endsWith("StationNumber")) {
+      // WPILib, station number
+      if (getIsRedAlliance(log, time)) {
+        switch (value) {
+          case 1:
+            return 3;
+          case 2:
+            return 4;
+          case 3:
+            return 5;
+        }
+      } else {
+        switch (value) {
+          case 1:
+            return 0;
+          case 2:
+            return 1;
+          case 3:
+            return 2;
+        }
+      }
+    } else {
+      // AdvantageKit, alliance station ID
+      switch (value) {
+        case 1:
+          return 3; // Red 1
+        case 2:
+          return 4; // Red 2
+        case 3:
+          return 5; // Red 3
+        case 4:
+          return 0; // Blue 1
+        case 5:
+          return 1; // Blue 2
+        case 6:
+          return 2; // Blue 3
+      }
+    }
+  }
+  return -1;
 }
 
 export interface JoystickState {
@@ -391,23 +445,14 @@ export function mergeMechanismStates(states: MechanismState[]): MechanismState {
   };
 }
 
+const SEARCH_FUSE = new Fuse([] as string[], { findAllMatches: true, ignoreLocation: true });
+
 export function searchFields(log: Log, query: string): string[] {
-  if (query.length == 1) return [];
-  query = query.toLowerCase();
-  let fieldStrings = log.getFieldKeys().filter((field) => field.toLowerCase().includes(query));
-  let fields = fieldStrings.map((field) => {
-    return {
-      string: field,
-      endDistance: field.length - field.toLowerCase().lastIndexOf(query)
-    };
-  });
-  fields.sort((a, b) => a.string.localeCompare(b.string, undefined, { numeric: true }));
-  fields.sort((a, b) => a.string.length - b.string.length);
-  fields.sort((a, b) => a.endDistance - b.endDistance);
-  return fields
+  if (query.length == 0) return [];
+  SEARCH_FUSE.setCollection(log.getFieldKeys());
+  return SEARCH_FUSE.search(query)
     .slice(0, MAX_SEARCH_RESULTS)
-    .map((field) => field.string)
-    .filter((field) => !log.isGenerated(field));
+    .map((field) => field.item);
 }
 
 export function getMatchInfo(log: Log): MatchInfo | null {

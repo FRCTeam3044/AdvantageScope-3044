@@ -131,6 +131,8 @@
               </div>
             </div>
 
+            <div class="legend-handle"></div>
+
             <div class="legend-left">
               <div class="legend-item">
                 <div class="legend-title">Left Axis<span></span></div>
@@ -206,7 +208,8 @@
                       </button>
                     </th>
                     <th>
-                      <span>&lt;Drag Here&gt;</span>
+                      <div>&lt;Drag Here&gt;</div>
+                      <input type="search" placeholder="Filter" />
                     </th>
                   </tr>
                 </tbody>
@@ -404,11 +407,7 @@
             <div class="three-dimension-canvas-container">
               <canvas class="three-dimension-canvas"></canvas>
               <div class="three-dimension-annotations"></div>
-              <div class="three-dimension-alert" hidden>
-                Robot pose not available
-                <br />
-                for camera "<span>???</span>"
-              </div>
+              <div class="three-dimension-alert" hidden></div>
             </div>
             <table class="timeline-viz-config">
               <tbody>
@@ -693,7 +692,7 @@
                 </tr>
                 <tr>
                   <td>
-                    <span class="label">X:</span>
+                    <span class="label">Combined:</span>
                     <span class="field-name">&lt;Drag Here&gt;</span>
                   </td>
                   <td>
@@ -713,12 +712,16 @@
                 </tr>
                 <tr>
                   <td>
-                    <span class="label">Y:</span>
+                    <span class="label">X:</span>
                     <span class="field-name">&lt;Drag Here&gt;</span>
                   </td>
                   <td>
-                    <span class="label">Group Size:</span>
-                    <input type="number" min="0" value="0" step="1" />
+                    <span class="label">Coordinates:</span>
+                    <select tabindex="-1">
+                      <option value="xr,yd">+X right, +Y down</option>
+                      <option value="xr,yu">+X right, +Y up</option>
+                      <option value="xu,yl">+X up, +Y left</option>
+                    </select>
                   </td>
                   <td>
                     <span class="label">Point Size:</span>
@@ -727,6 +730,26 @@
                       <option selected>medium</option>
                       <option>small</option>
                     </select>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <span class="label">Y:</span>
+                    <span class="field-name">&lt;Drag Here&gt;</span>
+                  </td>
+                  <td>
+                    <span class="label">Origin:</span>
+                    <select tabindex="-1">
+                      <option value="ul">upper left</option>
+                      <option value="ur">upper right</option>
+                      <option value="ll">lower left</option>
+                      <option value="lr">lower right</option>
+                      <option value="c">center</option>
+                    </select>
+                  </td>
+                  <td>
+                    <span class="label">Group Size:</span>
+                    <input type="number" min="0" value="0" step="1" />
                   </td>
                 </tr>
               </tbody>

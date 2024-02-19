@@ -105,7 +105,9 @@ window.addEventListener("message", (event) => {
             deployDirectory: oldPrefs.deployDirectory,
             skipHootNonProWarning: oldPrefs.skipHootNonProWarning,
             clickToGo: clickToGo,
-            clickToGoKey: CLICK_TO_GO_NT_KEY.value
+            clickToGoKey: CLICK_TO_GO_NT_KEY.value,
+            userAssetsFolder: oldPrefs.userAssetsFolder,
+            skipFrcLogFolderDefault: oldPrefs.skipFrcLogFolderDefault
           };
           messagePort.postMessage(newPrefs);
         } else {

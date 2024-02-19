@@ -144,6 +144,12 @@ window.writeOxConfig = (deployDir: string, timestamp: string, config: string) =>
     config
   });
 };
+function setExporting(exporting: boolean) {
+  if (exporting !== isExporting) {
+    isExporting = exporting;
+    window.sendMainMessage("set-exporting", exporting);
+  }
+}
 
 // MANAGE STATE
 
@@ -657,7 +663,7 @@ function handleMainMessage(message: NamedMessage) {
           content: "Please open a log file or connect to a live source, then try again."
         });
       } else {
-        isExporting = true;
+        setExporting(true);
         const incompleteWarning =
           liveConnected &&
           (window.preferences?.liveSubscribeMode === "low-bandwidth" || window.preferences?.liveMode === "phoenix");
@@ -671,7 +677,7 @@ function handleMainMessage(message: NamedMessage) {
       break;
 
     case "cancel-export":
-      isExporting = false;
+      setExporting(false);
       break;
 
     case "prepare-export":
@@ -701,7 +707,7 @@ function handleMainMessage(message: NamedMessage) {
           setLoading(null);
         })
         .finally(() => {
-          isExporting = false;
+          setExporting(false);
         });
       break;
 

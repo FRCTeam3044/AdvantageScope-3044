@@ -343,6 +343,13 @@ div.field-value svg.tunable:hover {
 
 div.field-value input {
   width: 50px;
+  background-color: #ffffff;
+  border: 1px solid #888888;
+  border-radius: 2px;
+}
+
+div.field-value input:focus {
+  background-color: #ffffaa;
 }
 
 div.field-value input::-webkit-outer-spin-button,
@@ -450,7 +457,7 @@ div.search-results-item:nth-child(even) {
   background-color: #f5f5f5;
 }
 
-div.search-results-item:hover {
+div.search-results-item.hovered {
   background-color: #ccc;
 }
 
@@ -465,7 +472,7 @@ div.search-results-item:hover {
     background-color: #272727;
   }
 
-  div.search-results-item:hover {
+  div.search-results-item.hovered {
     background-color: #555;
   }
 }
@@ -796,16 +803,32 @@ div.documentation-text blockquote p {
 
 /* Line graph */
 
+div.legend-handle {
+  position: absolute;
+  left: 0%;
+  width: 100%;
+  bottom: var(--legend-height);
+  height: 6px;
+  transform: translateY(50%);
+  cursor: row-resize;
+
+  z-index: 8;
+  opacity: 0;
+  background-color: #ddd;
+}
+
+div.legend-handle:hover {
+  display: initial;
+  opacity: 0.5;
+}
+
 div.legend-left {
   position: absolute;
   left: 0%;
   width: 33%;
   bottom: 0px;
-  height: 30%;
-  max-height: 200px;
-
+  height: var(--legend-height);
   overflow: auto;
-  padding-bottom: 5px;
 }
 
 div.legend-discrete {
@@ -813,11 +836,9 @@ div.legend-discrete {
   left: 33%;
   width: 33%;
   bottom: 0px;
-  height: 30%;
-  max-height: 200px;
+  height: var(--legend-height);
 
   overflow: auto;
-  padding-bottom: 5px;
   border-left: 1px solid #555;
   border-right: 1px solid #555;
 }
@@ -834,11 +855,8 @@ div.legend-right {
   left: 66%;
   width: 34%;
   bottom: 0px;
-  height: 30%;
-  max-height: 200px;
-
+  height: var(--legend-height);
   overflow: auto;
-  padding-bottom: 5px;
 }
 
 div.legend-drag-target {
@@ -949,6 +967,10 @@ div.legend-item-with-value div.legend-value {
 }
 
 @media (prefers-color-scheme: dark) {
+  div.legend-handle {
+    background-color: #444;
+  }
+
   svg.legend-splotch {
     stroke: #999;
   }
@@ -966,8 +988,7 @@ div.legend-item-with-value div.legend-value {
 div.line-graph-canvas-container {
   position: absolute;
   top: 0px;
-  bottom: 30%;
-  min-height: calc(100% - 200px);
+  bottom: var(--legend-height);
   left: 0px;
   right: 0px;
 }
@@ -1222,12 +1243,40 @@ table.console-table th:first-child button {
 }
 
 table.console-table th:not(:first-child) {
+  border-right: none;
+}
+
+table.console-table th:not(:first-child) div {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  height: 30px;
+  right: 200px;
   padding-left: 5px;
   overflow: hidden;
   font-size: 14px;
+  line-height: 30px;
   text-align: left;
-  border-right: none;
   white-space: nowrap;
+}
+
+table.console-table th:not(:first-child) input {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  height: 15px;
+  width: 180px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  transform: translateY(-50%);
+}
+
+table.console-table th:not(:first-child) input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  height: 1em;
+  width: 1em;
+  background: url("symbols/xmark.circle.fill.svg") no-repeat 50% 50%;
+  background-size: contain;
 }
 
 table.console-table td {
@@ -1254,11 +1303,11 @@ table.console-table td:last-child {
 }
 
 table.console-table tr.hovered td {
-  background-color: #ddd;
+  background-color: #eee;
 }
 
 table.console-table tr.selected td {
-  background-color: #aaa;
+  background-color: #e3e3e3;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1273,11 +1322,11 @@ table.console-table tr.selected td {
   }
 
   table.console-table tr.hovered td {
-    background-color: #444;
+    background-color: #333;
   }
 
   table.console-table tr.selected td {
-    background-color: #777;
+    background-color: #3e3e3e;
   }
 }
 

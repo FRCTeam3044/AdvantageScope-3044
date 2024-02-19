@@ -6,30 +6,50 @@ import {
   AdvantageScopeAssets,
   Config2d,
   Config3dField,
+  Config3dField_GamePiece,
   Config3dRobot,
   Config3dRobot_Camera,
   Config3dRobot_Component,
   ConfigJoystick,
   ConfigJoystick_Axis,
   ConfigJoystick_Button,
-  ConfigJoystick_Joystick
+  ConfigJoystick_Joystick,
+  DEFAULT_DRIVER_STATIONS
 } from "../shared/AdvantageScopeAssets";
+import Preferences from "../shared/Preferences";
 import { checkArrayType } from "../shared/util";
-import { AUTO_ASSETS, BUNDLED_ASSETS, LEGACY_ASSETS, USER_ASSETS, WINDOW_ICON } from "./Constants";
+import {
+  AUTO_ASSETS,
+  BUNDLED_ASSETS,
+  DEFAULT_USER_ASSETS,
+  LEGACY_ASSETS,
+  PREFS_FILENAME,
+  WINDOW_ICON
+} from "./Constants";
 
 const USER_ASSETS_README =
   'This folder contains extra assets for the odometry, 3D field, and joystick views. For more details, see the "Custom Fields/Robots/Joysticks" page in the AdvantageScope documentation (available through the documentation tab in the app or the URL below).\n\nhttps://github.com/Mechanical-Advantage/AdvantageScope/blob/main/docs/CUSTOM-ASSETS.md';
 const CONVERT_LEGACY_ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWxYZabcdefghijklnopqrstuvwxyz0123456789".split("");
+
+/** Returns the path to the user assets folder. */
+export function getUserAssetsPath() {
+  const prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
+  if (prefs.userAssetsFolder === null) {
+    return DEFAULT_USER_ASSETS;
+  } else {
+    return prefs.userAssetsFolder;
+  }
+}
 
 /** Creates folders for user and automatic assets. */
 export function createAssetFolders() {
   if (!fs.existsSync(AUTO_ASSETS)) {
     fs.mkdirSync(AUTO_ASSETS);
   }
-  if (!fs.existsSync(USER_ASSETS)) {
-    fs.mkdirSync(USER_ASSETS);
+  if (!fs.existsSync(DEFAULT_USER_ASSETS)) {
+    fs.mkdirSync(DEFAULT_USER_ASSETS);
   }
-  fs.writeFileSync(path.join(USER_ASSETS, "README.txt"), USER_ASSETS_README);
+  fs.writeFileSync(path.join(DEFAULT_USER_ASSETS, "README.txt"), USER_ASSETS_README);
 }
 
 /** Converts any custom "FRC Data" assets to the current format. */
@@ -65,7 +85,7 @@ export function convertLegacyAssets() {
 
     // Create target folder
     let targetPath = path.join(
-      USER_ASSETS,
+      DEFAULT_USER_ASSETS,
       file.split("_")[0] +
         "_" +
         title
@@ -120,7 +140,7 @@ export function loadAssets(): AdvantageScopeAssets {
   };
 
   // Highest priority is first
-  [USER_ASSETS, AUTO_ASSETS, BUNDLED_ASSETS].forEach((parentFolder) => {
+  [getUserAssetsPath(), AUTO_ASSETS, BUNDLED_ASSETS].forEach((parentFolder) => {
     fs.readdirSync(parentFolder, { withFileTypes: true })
       .sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0)) // Inverse order so newer versions take priority
       .forEach((object) => {
@@ -194,7 +214,8 @@ export function loadAssets(): AdvantageScopeAssets {
             config.bottomRight[0] >= 0 &&
             config.bottomRight[1] >= 0 &&
             config.widthInches > 0 &&
-            config.heightInches > 0
+            config.heightInches > 0 &&
+            fs.existsSync(decodeURIComponent(config.path))
           ) {
             assets.field2ds.push(config);
             assets.loadFailures.splice(assets.loadFailures.indexOf(object.name), 1);
@@ -207,7 +228,9 @@ export function loadAssets(): AdvantageScopeAssets {
             rotations: [],
             widthInches: 0,
             heightInches: 0,
-            defaultOrigin: "auto"
+            defaultOrigin: "auto",
+            driverStations: DEFAULT_DRIVER_STATIONS,
+            gamePieces: []
           };
           if ("name" in configRaw && typeof configRaw.name === "string") {
             config.name = configRaw.name;
@@ -244,7 +267,61 @@ export function loadAssets(): AdvantageScopeAssets {
           ) {
             config.defaultOrigin = configRaw.defaultOrigin;
           }
-          if (config.name.length > 0 && config.widthInches > 0 && config.heightInches > 0) {
+          if (
+            "driverStations" in configRaw &&
+            Array.isArray(configRaw.driverStations) &&
+            configRaw.driverStations.length === 6 &&
+            configRaw.driverStations.every((position) => checkArrayType(position, "number") && position.length === 2)
+          ) {
+            config.driverStations = configRaw.driverStations;
+          }
+          if ("gamePieces" in configRaw && Array.isArray(configRaw.gamePieces)) {
+            configRaw.gamePieces.forEach((gamePieceRaw: any) => {
+              let gamePiece: Config3dField_GamePiece = {
+                name: "",
+                rotations: [],
+                position: [0, 0, 0],
+                stagedObjects: []
+              };
+              config.gamePieces.push(gamePiece);
+              if ("name" in gamePieceRaw && typeof gamePieceRaw.name === "string") {
+                gamePiece.name = gamePieceRaw.name;
+              }
+              if (
+                "rotations" in gamePieceRaw &&
+                Array.isArray(gamePieceRaw.rotations) &&
+                gamePieceRaw.rotations.every(
+                  (rotation: any) =>
+                    typeof rotation === "object" &&
+                    "axis" in rotation &&
+                    (rotation.axis === "x" || rotation.axis === "y" || rotation.axis === "z") &&
+                    "degrees" in rotation &&
+                    typeof rotation.degrees === "number"
+                )
+              ) {
+                gamePiece.rotations = gamePieceRaw.rotations;
+              }
+              if (
+                "position" in gamePieceRaw &&
+                checkArrayType(gamePieceRaw.position, "number") &&
+                gamePieceRaw.position.length === 3
+              ) {
+                gamePiece.position = gamePieceRaw.position;
+              }
+              if ("stagedObjects" in gamePieceRaw && checkArrayType(gamePieceRaw.stagedObjects, "string")) {
+                gamePiece.stagedObjects = gamePieceRaw.stagedObjects;
+              }
+            });
+          }
+          if (
+            config.name.length > 0 &&
+            config.widthInches > 0 &&
+            config.heightInches > 0 &&
+            fs.existsSync(decodeURIComponent(config.path)) &&
+            config.gamePieces.every((value, index) =>
+              fs.existsSync(decodeURIComponent(config.path).slice(0, -4) + "_" + index.toString() + ".glb")
+            )
+          ) {
             assets.field3ds.push(config);
             assets.loadFailures.splice(assets.loadFailures.indexOf(object.name), 1);
           }
@@ -361,7 +438,14 @@ export function loadAssets(): AdvantageScopeAssets {
               }
             });
           }
-          if (config.name.length > 0 && config.cameras.every((camera) => camera.name.length > 0)) {
+          if (
+            config.name.length > 0 &&
+            config.cameras.every((camera) => camera.name.length > 0) &&
+            fs.existsSync(decodeURIComponent(config.path)) &&
+            config.components.every((value, index) =>
+              fs.existsSync(decodeURIComponent(config.path).slice(0, -4) + "_" + index.toString() + ".glb")
+            )
+          ) {
             assets.robots.push(config);
             assets.loadFailures.splice(assets.loadFailures.indexOf(object.name), 1);
           }
@@ -502,7 +586,8 @@ export function loadAssets(): AdvantageScopeAssets {
                 case "axis":
                   return component.sizePx[0] > 0 && component.sizePx[1] > 0 && component.sourceIndex >= 0;
               }
-            })
+            }) &&
+            fs.existsSync(decodeURIComponent(config.path))
           ) {
             assets.joysticks.push(config);
             assets.loadFailures.splice(assets.loadFailures.indexOf(object.name), 1);

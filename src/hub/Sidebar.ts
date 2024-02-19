@@ -53,11 +53,14 @@ export default class Sidebar {
   private expandedFields = new Set<string>();
   private activeFields = new Set<string>();
   private activeFieldCallbacks: (() => void)[] = [];
+  private updateTypeWarningCallbacks: (() => void)[] = [];
   private updateValueCallbacks: ((time: number | null) => void)[] = [];
   private selectGroup: string[] = [];
   private selectGroupClearCallbacks: (() => void)[] = [];
   private searchKey: string | null = null;
   private searchExpandCallbacks: (() => void)[] = [];
+  private searchHoveredIndex: number | null = null;
+  private searchResults: string[] = [];
   private setTuningModeActiveCallbacks: ((active: boolean) => void)[] = [];
   private tuningModePublishCallbacks: (() => void)[] = [];
   private tuningValueCache: { [key: string]: string } = {};
@@ -65,11 +68,11 @@ export default class Sidebar {
 
   constructor() {
     // Set up handle for resizing
-    this.SIDEBAR_HANDLE.addEventListener("mousedown", (_) => {
+    this.SIDEBAR_HANDLE.addEventListener("mousedown", () => {
       this.sidebarHandleActive = true;
       document.body.style.cursor = "col-resize";
     });
-    window.addEventListener("mouseup", (_) => {
+    window.addEventListener("mouseup", () => {
       this.sidebarHandleActive = false;
       document.body.style.cursor = "initial";
     });
@@ -117,12 +120,34 @@ export default class Sidebar {
       let hidden =
         !searchInputFocused || this.SEARCH_INPUT.value.length === 0 || this.SEARCH_RESULTS.childElementCount === 0;
       if (hidden !== this.SEARCH_RESULTS.hidden) {
-        this.SEARCH_RESULTS.hidden = hidden;
-        if (!hidden && this.SEARCH_RESULTS.hidden) {
+        if (hidden && !this.SEARCH_RESULTS.hidden) {
           this.SEARCH_RESULTS.scrollTop = 0;
+          this.searchHoveredIndex = null;
+          this.updateSearchHovered(false);
         }
+        this.SEARCH_RESULTS.hidden = hidden;
       }
     };
+    this.SEARCH_INPUT.addEventListener("keydown", (event) => {
+      const resultsCount = this.SEARCH_RESULTS.children.length;
+      if (event.code === "ArrowDown") {
+        if (this.searchHoveredIndex === null || this.searchHoveredIndex >= resultsCount) {
+          this.searchHoveredIndex = 0;
+        } else if (this.searchHoveredIndex < resultsCount - 1) {
+          this.searchHoveredIndex++;
+        }
+        this.updateSearchHovered(true);
+      } else if (event.code === "ArrowUp") {
+        if (this.searchHoveredIndex === null || this.searchHoveredIndex >= resultsCount) {
+          this.searchHoveredIndex = 0;
+        } else if (this.searchHoveredIndex > 0) {
+          this.searchHoveredIndex--;
+        }
+        this.updateSearchHovered(true);
+      } else if (event.code === "Enter") {
+        this.runSearch();
+      }
+    });
 
     // Tuning button
     this.TUNING_BUTTON.addEventListener("click", () => {
@@ -162,11 +187,25 @@ export default class Sidebar {
     if (!expandedEqual) this.refresh(true);
   }
 
+  /** Updates the hovering effect on the search results. */
+  private updateSearchHovered(scroll: boolean) {
+    Array.from(this.SEARCH_RESULTS.children).forEach((element, index) => {
+      if (index === this.searchHoveredIndex) {
+        element.classList.add("hovered");
+        if (scroll) {
+          element.scrollIntoView({ block: "nearest" });
+        }
+      } else {
+        element.classList.remove("hovered");
+      }
+    });
+  }
+
   /** Updates the set of results based on the current query. */
   private updateSearchResults() {
     let query = this.SEARCH_INPUT.value;
-    let results = query.length === 0 ? [] : searchFields(window.log, query);
-    results = results.filter((field) => {
+    this.searchResults = query.length === 0 ? [] : searchFields(window.log, query);
+    this.searchResults = this.searchResults.filter((field) => {
       let show = true;
       this.HIDDEN_KEYS.forEach((hiddenKey) => {
         if (field.startsWith("/" + hiddenKey)) show = false;
@@ -178,26 +217,33 @@ export default class Sidebar {
     while (this.SEARCH_RESULTS.firstChild) {
       this.SEARCH_RESULTS.removeChild(this.SEARCH_RESULTS.firstChild);
     }
-    results.forEach((field, index) => {
+    this.searchResults.forEach((field, index) => {
       let div = document.createElement("div");
       this.SEARCH_RESULTS.appendChild(div);
       div.classList.add("search-results-item");
       div.innerText = field;
-      let search = () => {
-        this.searchKey = field;
-        this.searchExpandCallbacks.forEach((callback) => callback());
-        this.searchKey = null;
-      };
-      div.addEventListener("mousedown", search);
-      div.addEventListener("touchdown", search);
-      if (index === 0) {
-        this.SEARCH_INPUT.addEventListener("keydown", (event) => {
-          if (div.getBoundingClientRect().height > 0 && event.code === "Enter") {
-            search();
-          }
-        });
-      }
+      div.addEventListener("mousedown", () => {
+        this.searchHoveredIndex = index;
+        this.runSearch();
+      });
+      div.addEventListener("touchdown", () => {
+        this.searchHoveredIndex = index;
+        this.runSearch();
+      });
+      div.addEventListener("mousemove", () => {
+        this.searchHoveredIndex = index;
+        this.updateSearchHovered(false);
+      });
     });
+  }
+
+  /** Close the search and highlight the selected field. */
+  private runSearch() {
+    if (this.searchHoveredIndex === null || this.searchHoveredIndex >= this.searchResults.length) return;
+    this.searchKey = this.searchResults[this.searchHoveredIndex];
+    this.searchExpandCallbacks.forEach((callback) => callback());
+    this.searchKey = null;
+    this.SEARCH_INPUT.blur();
   }
 
   /** Updates the displayed width based on the current state. */
@@ -284,19 +330,22 @@ export default class Sidebar {
 
   /** Refresh based on new log data or expanded field list. */
   refresh(forceRefresh: boolean = false) {
-    let fieldsChanged = forceRefresh || !arraysEqual(window.log.getFieldKeys(), this.lastFieldKeys);
-    this.lastFieldKeys = window.log.getFieldKeys();
+    let fieldKeys = window.log.getFieldKeys();
+    let fieldsChanged = forceRefresh || !arraysEqual(fieldKeys, this.lastFieldKeys);
+    this.lastFieldKeys = fieldKeys;
 
     if (fieldsChanged) {
       // Update field count
       this.fieldCount = window.log.getFieldCount();
 
       // Remove old list
+      let originalScroll = this.SIDEBAR.scrollTop;
       while (this.FIELD_LIST.firstChild) {
         this.FIELD_LIST.removeChild(this.FIELD_LIST.firstChild);
       }
       this.activeFields = new Set();
       this.activeFieldCallbacks = [];
+      this.updateTypeWarningCallbacks = [];
       this.updateValueCallbacks = [];
       this.selectGroupClearCallbacks = [];
       this.setTuningModeActiveCallbacks = [];
@@ -316,11 +365,13 @@ export default class Sidebar {
         .forEach((key) => {
           this.addFields(key, "/" + key, tree[key], this.FIELD_LIST, 0);
         });
+      this.SIDEBAR.scrollTop = originalScroll;
 
       // Update search
       this.updateSearchResults();
     } else {
-      // Update metadata
+      // Update type warnings and metadata
+      this.updateTypeWarningCallbacks.forEach((callback) => callback());
       this.updateMetadataCallbacks.forEach((callback) => callback());
     }
   }
@@ -432,6 +483,31 @@ export default class Sidebar {
     label.style.fontStyle = field.fullKey === null ? "normal" : "italic";
     label.style.cursor = field.fullKey === null ? "auto" : "grab";
     if (field.fullKey) {
+      {
+        let typeWarningSpan = document.createElement("span");
+        label.appendChild(typeWarningSpan);
+        typeWarningSpan.innerHTML = " &#x26A0;";
+        typeWarningSpan.style.cursor = "help";
+        const warningText =
+          "Values with conflicting types have been written to this field. Only values compatible with the initial type can be viewed and exported.";
+        typeWarningSpan.addEventListener("click", () => {
+          window.sendMainMessage("alert", {
+            title: "Conflicting types",
+            content: warningText
+          });
+        });
+        typeWarningSpan.title = warningText;
+        let lastHidden = false;
+        let updateTypeWarning = () => {
+          let hidden = !window.log.getTypeWarning(field.fullKey!);
+          if (hidden !== lastHidden) {
+            lastHidden = hidden;
+            typeWarningSpan.hidden = hidden;
+          }
+        };
+        this.updateTypeWarningCallbacks.push(updateTypeWarning);
+        updateTypeWarning();
+      }
       let structuredType = window.log.getStructuredType(field.fullKey);
       if (structuredType !== null) {
         let typeLabel = document.createElement("span");
@@ -542,6 +618,7 @@ export default class Sidebar {
         // Update values periodically
         let firstUpdate = true;
         let lastValue: boolean | null = null;
+        let lastHidden: boolean | null = null;
         this.updateValueCallbacks.push((time) => {
           let rect = fieldElement.getBoundingClientRect();
           let onScreen =
@@ -558,9 +635,13 @@ export default class Sidebar {
             const darkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
             circle.setAttributeNS(null, "fill", value ? (darkMode ? "lightgreen" : "green") : "red");
           }
-          valueElement.hidden = value === null;
-          let valueWidth = valueElement.clientWidth === 0 ? 0 : valueElement.clientWidth + this.VALUE_WIDTH_MARGIN_PX;
-          fieldElementContainer.style.setProperty("--value-width", valueWidth.toString() + "px");
+          let hidden = value === null;
+          valueElement.hidden = hidden;
+          if (hidden !== lastHidden) {
+            lastHidden = hidden;
+            let valueWidth = valueElement.clientWidth === 0 ? 0 : valueElement.clientWidth + this.VALUE_WIDTH_MARGIN_PX;
+            fieldElementContainer.style.setProperty("--value-width", valueWidth.toString() + "px");
+          }
         });
 
         // Tuning mode controls
@@ -596,6 +677,7 @@ export default class Sidebar {
         // Add callback
         let firstUpdate = true;
         let lastValue: number | null = null;
+        let lastCharCount: number | null = null;
         this.updateValueCallbacks.push((time) => {
           let rect = fieldElement.getBoundingClientRect();
           let onScreen =
@@ -622,12 +704,18 @@ export default class Sidebar {
           }
           numValueInput!.placeholder = valueStr;
           numValueSpan!.innerText = valueStr;
-          let valueWidth = valueElement.clientWidth === 0 ? 0 : valueElement.clientWidth + this.VALUE_WIDTH_MARGIN_PX;
-          fieldElementContainer.style.setProperty("--value-width", valueWidth.toString() + "px");
+          let charCount = valueStr.length;
+          if (charCount !== lastCharCount) {
+            lastCharCount = charCount;
+            let valueWidth = valueElement.clientWidth === 0 ? 0 : valueElement.clientWidth + this.VALUE_WIDTH_MARGIN_PX;
+            fieldElementContainer.style.setProperty("--value-width", valueWidth.toString() + "px");
+          }
         });
       } else if (type === LoggableType.String) {
         let firstUpdate = true;
         let lastValue: string | null = null;
+        let lastCharCount: number | null = null;
+        let lastSidebarWidth = 0;
         this.updateValueCallbacks.push((time) => {
           let rect = fieldElement.getBoundingClientRect();
           let onScreen =
@@ -636,21 +724,29 @@ export default class Sidebar {
 
           let value: string | null =
             time === null ? null : getOrDefault(window.log, field.fullKey!, LoggableType.String, time, null);
-          if (!firstUpdate && value === lastValue) return;
+          if (!firstUpdate && value === lastValue && this.sidebarWidth === lastSidebarWidth) return;
           firstUpdate = false;
           lastValue = value;
+          lastSidebarWidth = this.sidebarWidth;
 
+          let valueStr = "";
           if (value !== null) {
-            if (value.length > 8) {
-              valueElement.innerText = value.substring(0, 8) + "\u2026";
+            const maxCharacters = Math.round(this.sidebarWidth * 0.03);
+            if (value.length > maxCharacters) {
+              valueStr = value.substring(0, maxCharacters - 1) + "\u2026";
             } else {
-              valueElement.innerText = value;
+              valueStr = value;
             }
           } else {
-            valueElement.innerText = "";
+            valueStr = "";
           }
-          let valueWidth = valueElement.clientWidth === 0 ? 0 : valueElement.clientWidth + this.VALUE_WIDTH_MARGIN_PX;
-          fieldElementContainer.style.setProperty("--value-width", valueWidth.toString() + "px");
+          valueElement.innerText = valueStr;
+          let charCount = valueStr.length;
+          if (charCount !== lastCharCount) {
+            lastCharCount = charCount;
+            let valueWidth = valueElement.clientWidth === 0 ? 0 : valueElement.clientWidth + this.VALUE_WIDTH_MARGIN_PX;
+            fieldElementContainer.style.setProperty("--value-width", valueWidth.toString() + "px");
+          }
         });
       }
 
@@ -670,10 +766,18 @@ export default class Sidebar {
         this.setTuningModeActiveCallbacks.push(setTuningModeActive);
         setTuningModeActive(this.isTuningMode);
 
+        // Manage focus
+        let isFocused = false;
+        numValueInput?.addEventListener("focus", () => (isFocused = true));
+        numValueInput?.addEventListener("blur", () => (isFocused = false));
+        numValueInput?.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") numValueInput?.blur();
+        });
+
         // Publish & unpublish value
         let lastHasValue = false;
         this.tuningModePublishCallbacks.push(() => {
-          if (!this.isTuningMode) return;
+          if (!this.isTuningMode || isFocused) return;
           let value = Number(numValueInput!.value);
           let hasValue = numValueInput!.value.length > 0 && !isNaN(value) && isFinite(value);
           if (hasValue) {
@@ -697,8 +801,11 @@ export default class Sidebar {
       }
 
       // Metadata callback
+      let lastMetadata: string | null = null;
       let updateMetadata = () => {
         let metadata = window.log.getMetadataString(field.fullKey!);
+        if (metadata === lastMetadata) return;
+        lastMetadata = metadata;
         try {
           let metadataParsed = JSON.parse(metadata);
           label.title = Object.keys(metadataParsed)

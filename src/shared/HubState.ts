@@ -22,8 +22,14 @@ export interface TabState {
   title?: string;
 }
 
+export interface DocumentationState {
+  type: TabType.Documentation;
+  path: string;
+}
+
 export interface LineGraphState {
   type: TabType.LineGraph | TabType.Tuner;
+  legendHeight: number;
   legends: {
     left: {
       lockedRange: [number, number] | null;
@@ -79,8 +85,10 @@ export interface StatisticsState {
 
 export interface TimelineVisualizerState {
   type: TabType.Odometry | TabType.ThreeDimension | TabType.Video | TabType.Points | TabType.Joysticks;
+  uuid: string;
   fields: ({ key: string; sourceTypeIndex: number; sourceType: LoggableType | string } | null)[];
   listFields: { type: string; key: string; sourceTypeIndex: number; sourceType: LoggableType | string }[][];
   options: { [id: string]: any };
   configHidden: boolean;
+  visualizer: any;
 }

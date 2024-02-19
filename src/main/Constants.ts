@@ -14,12 +14,11 @@ export const STATE_FILENAME = path.join(
 );
 export const BUNDLED_ASSETS = path.join(__dirname, "..", "bundledAssets");
 export const AUTO_ASSETS = path.join(app.getPath("userData"), "autoAssets");
-export const USER_ASSETS = path.join(app.getPath("userData"), "userAssets");
+export const DEFAULT_USER_ASSETS = path.join(app.getPath("userData"), "userAssets");
 export const LEGACY_ASSETS = path.join(app.getPath("userData"), "frcData");
 export const LAST_OPEN_FILE = path.join(app.getPath("temp"), "akit-log-path.txt");
 export const VIDEO_CACHE = path.join(app.getPath("temp"), "advantagescope-videos");
-export const DEFAULT_LOGS_FOLDER =
-  process.platform === "win32" ? "C:\\Users\\Public\\Documents\\FRC\\Log Files" : undefined;
+export const FRC_LOG_FOLDER = "C:\\Users\\Public\\Documents\\FRC\\Log Files";
 export const WINDOW_ICON = process.platform === "darwin" ? undefined : path.join(__dirname, "../icons/window-icon.png");
 export const DEFAULT_PREFS: Preferences = {
   theme: process.platform === "linux" ? "light" : "system",
@@ -36,8 +35,14 @@ export const DEFAULT_PREFS: Preferences = {
   deployDirectory: "",
   skipHootNonProWarning: false,
   clickToGo: "none",
-  clickToGoKey: "/SmartDashboard/ClickPosition"
+  clickToGoKey: "/SmartDashboard/ClickPosition",
+  userAssetsFolder: null,
+  skipFrcLogFolderDefault: false
 };
+export const HUB_DEFAULT_WIDTH = 1100;
+export const HUB_DEFAULT_HEIGHT = 650;
+export const SATELLITE_DEFAULT_WIDTH = 900;
+export const SATELLITE_DEFAULT_HEIGHT = 500;
 
 // Live RLOG
 export const RLOG_CONNECT_TIMEOUT_MS = 3000; // How long to wait when connecting
