@@ -19,6 +19,7 @@ export default class TunerController implements TabController {
   private MAX_VALUE = 1e20;
   private CONTENT: HTMLElement;
   private LEGEND_ITEM_TEMPLATE: HTMLElement;
+  private LEGEND_HANDLE: HTMLElement;
   private CANVAS_CONTAINER: HTMLElement;
   private CANVAS: HTMLCanvasElement;
   private SCROLL_OVERLAY: HTMLElement;
@@ -80,6 +81,8 @@ export default class TunerController implements TabController {
     factor: 1
   };
 
+  private legendHandleActive = false;
+  private legendHeightPercent = 0.3;
   private timestampRange: [number, number] = [0, 10];
   private maxZoom = true; // When at maximum zoom, maintain it as the available range increases
   private lastCursorX: number | null = null;
@@ -94,6 +97,7 @@ export default class TunerController implements TabController {
     this.CONTENT = content;
     this.LEGEND_ITEM_TEMPLATE = content.getElementsByClassName("legend-item-template")[0]
       .firstElementChild as HTMLElement;
+    this.LEGEND_HANDLE = content.getElementsByClassName("legend-handle")[0] as HTMLElement;
     this.CANVAS_CONTAINER = content.getElementsByClassName("line-graph-canvas-container")[0] as HTMLElement;
     this.CANVAS = content.getElementsByClassName("line-graph-canvas")[0] as HTMLCanvasElement;
     this.SCROLL_OVERLAY = content.getElementsByClassName("line-graph-scroll")[0] as HTMLElement;
@@ -246,6 +250,26 @@ export default class TunerController implements TabController {
         unitConversion: this.rightUnitConversion
       });
     });
+
+    // Legend resizing
+    this.LEGEND_HANDLE.addEventListener("mousedown", () => {
+      this.legendHandleActive = true;
+      document.body.style.cursor = "row-resize";
+    });
+    window.addEventListener("mouseup", () => {
+      if (this.legendHandleActive) {
+        this.legendHandleActive = false;
+        document.body.style.cursor = "initial";
+      }
+    });
+    window.addEventListener("mousemove", (event) => {
+      if (this.legendHandleActive) {
+        let rect = this.CONTENT.getBoundingClientRect();
+        this.legendHeightPercent = (rect.bottom - event.clientY) / rect.height;
+        this.updateLegendHeight();
+      }
+    });
+    this.updateLegendHeight();
   }
   newAssets(): void {}
 
@@ -289,6 +313,7 @@ export default class TunerController implements TabController {
   saveState(): LineGraphState {
     return {
       type: TabType.Tuner,
+      legendHeight: this.legendHeightPercent,
       legends: {
         left: {
           lockedRange: this.leftLockedRange,
@@ -332,8 +357,16 @@ export default class TunerController implements TabController {
     state.legends.right.fields.forEach((field) => {
       this.addField("right", field.key, field.color, field.show);
     });
+
+    this.legendHeightPercent = state.legendHeight;
+    this.updateLegendHeight();
   }
 
+  /** Updates the displayed height based on the current state. */
+  private updateLegendHeight() {
+    this.legendHeightPercent = clampValue(this.legendHeightPercent, 0.15, 0.75);
+    this.CONTENT.style.setProperty("--legend-height", (this.legendHeightPercent * 100).toString() + "%");
+  }
   /** Updates the axis labels based on the locked and unit conversion status. */
   updateAxisLabels() {
     let leftLocked = this.leftLockedRange != null;

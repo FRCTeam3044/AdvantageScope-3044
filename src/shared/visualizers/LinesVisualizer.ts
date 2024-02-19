@@ -16,6 +16,11 @@ export default class LinesVisualizer implements Visualizer {
     this.IMAGE = document.createElement("img");
     this.CANVAS.appendChild(this.IMAGE);
   }
+  saveState() {
+    return null;
+  }
+
+  restoreState(): void {}
 
   render(command: any): number | null {
     // Set up canvas
