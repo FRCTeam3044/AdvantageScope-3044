@@ -135,6 +135,7 @@ export default class OdometryVisualizer implements Visualizer {
     let canvasFieldWidth = fieldWidth * imageScalar;
     let canvasFieldHeight = fieldHeight * imageScalar;
     let pixelsPerInch = (canvasFieldHeight / gameData.heightInches + canvasFieldWidth / gameData.widthInches) / 2;
+    let pixelsPerUnit = convert(pixelsPerInch, command.options.unitDistance, "inches");
 
     // Convert translation to pixel coordinates
     let calcCoordinates = (translation: Translation2d, alwaysFlipped = false): [number, number] => {
@@ -286,6 +287,63 @@ export default class OdometryVisualizer implements Visualizer {
     // Copy heatmap to main canvas
     context.drawImage(this.HEATMAP_CONTAINER.firstElementChild as HTMLCanvasElement, 0, 0);
 
+    command.poses.lines.forEach((line: Pose2d[]) => {
+      context.strokeStyle = "blue";
+      context.lineWidth = command.options.lineThickness * pixelsPerUnit;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.beginPath();
+      context.moveTo(...calcCoordinates(line[0].translation));
+      context.lineTo(...calcCoordinates(line[1].translation));
+      context.stroke();
+      context.fillStyle = "blue";
+      context.beginPath();
+      context.arc(
+        ...calcCoordinates(line[0].translation),
+        command.options.pointSize * pixelsPerUnit * 0.5,
+        0,
+        2 * Math.PI
+      );
+      context.fill();
+      context.beginPath();
+      context.arc(
+        ...calcCoordinates(line[1].translation),
+        command.options.pointSize * pixelsPerUnit * 0.5,
+        0,
+        2 * Math.PI
+      );
+      context.fill();
+    });
+    // Draw trajectories
+    command.poses.trajectory.forEach((trajectory: Pose2d[]) => {
+      context.strokeStyle = "orange";
+      context.lineWidth = command.options.trajectoryThickness * pixelsPerUnit;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.beginPath();
+      let firstPoint = true;
+      trajectory.forEach((pose) => {
+        if (firstPoint) {
+          context.moveTo(...calcCoordinates(pose.translation));
+          firstPoint = false;
+        } else {
+          context.lineTo(...calcCoordinates(pose.translation));
+        }
+      });
+      context.stroke();
+    });
+    // Draw points
+    command.poses.points.forEach((point: Pose2d) => {
+      context.fillStyle = "red";
+      context.beginPath();
+      context.arc(
+        ...calcCoordinates(point.translation),
+        command.options.pointSize * pixelsPerUnit * 0.5,
+        0,
+        2 * Math.PI
+      );
+      context.fill();
+    });
     // Draw trajectories
     command.poses.trajectory.forEach((trajectory: Pose2d[]) => {
       context.strokeStyle = "orange";

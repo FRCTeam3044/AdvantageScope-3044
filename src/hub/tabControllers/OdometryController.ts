@@ -23,6 +23,8 @@ export default class OdometryController extends TimelineVizController {
   private static POSE_TYPES = [
     "Robot",
     "Ghost",
+    "Points",
+    "Lines",
     "Trajectory",
     "Vision Target",
     "Heatmap",
@@ -187,7 +189,9 @@ export default class OdometryController extends TimelineVizController {
       size: Number(this.SIZE.value),
       allianceBumpers: this.ALLIANCE_BUMPERS.value,
       allianceOrigin: this.ALLIANCE_ORIGIN.value,
-      orientation: this.ORIENTATION.value
+      orientation: this.ORIENTATION.value,
+      pointSize: 0.15,
+      lineThickness: 0.1
     };
   }
 
@@ -242,6 +246,8 @@ export default class OdometryController extends TimelineVizController {
     };
 
     // Get data
+    let pointsData: Pose2d[] = [];
+    let linesData: Pose2d[][][] = [];
     let robotData: Pose2d[] = [];
     let trailData: Translation2d[][] = [];
     let ghostData: Pose2d[] = [];
@@ -377,6 +383,18 @@ export default class OdometryController extends TimelineVizController {
           break;
         case "Trajectory":
           trajectoryData.push(getCurrentValue(field.key, field.sourceType));
+          break;
+        case "Points":
+          pointsData = pointsData.concat(getCurrentValue(field.key, field.sourceType));
+          break;
+        case "Lines":
+          let data = getCurrentValue(field.key, field.sourceType);
+          let dataParsed: Pose2d[][] = [];
+          for (let i = 0; i < data.length; i += 2) {
+            let line = data.slice(i, i + 2);
+            if (line.length == 2) dataParsed.push(line);
+          }
+          linesData = linesData.concat(dataParsed);
           break;
         case "Vision Target":
           visionTargetData = visionTargetData.concat(getCurrentValue(field.key, field.sourceType));
@@ -566,7 +584,9 @@ export default class OdometryController extends TimelineVizController {
         arrowCenter: arrowCenterData,
         arrowBack: arrowBackData,
         zebraMarker: zebraMarkerData,
-        zebraGhost: zebraGhostData
+        zebraGhost: zebraGhostData,
+        lines: linesData,
+        points: pointsData
       },
       options: this.options,
       allianceRedBumpers: allianceRedBumpers,
