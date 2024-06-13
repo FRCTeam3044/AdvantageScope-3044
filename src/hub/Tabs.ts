@@ -20,6 +20,7 @@ import TimelineVizController from "./tabControllers/TimelineVizController";
 import VideoController from "./tabControllers/VideoController";
 import TunerController from "./tabControllers/TunerController";
 import ConfigEditorController from "./tabControllers/ConfigEditorController";
+import CommandDebuggerController from "./tabControllers/CommandDebuggerController";
 
 export default class Tabs {
   private VIEWER = document.getElementsByClassName("viewer")[0] as HTMLElement;
@@ -267,6 +268,11 @@ export default class Tabs {
         contentElement = this.CONTENT_TEMPLATES.children[5].cloneNode(true) as HTMLElement;
         contentElement.appendChild(this.CONTENT_TEMPLATES.children[16].cloneNode(true));
         controller = new LinesController(contentElement);
+        break;
+      case TabType.CommandDebugger:
+        contentElement = this.CONTENT_TEMPLATES.children[5].cloneNode(true) as HTMLElement;
+        contentElement.appendChild(this.CONTENT_TEMPLATES.children[17].cloneNode(true));
+        controller = new CommandDebuggerController(contentElement);
         break;
     }
 
