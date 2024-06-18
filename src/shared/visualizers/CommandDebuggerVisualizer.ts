@@ -1,5 +1,3 @@
-import { Translation2d } from "../geometry";
-import { MechanismState } from "../log/LogUtil";
 import Visualizer from "./Visualizer";
 
 export default class MechanismVisualizer implements Visualizer {
