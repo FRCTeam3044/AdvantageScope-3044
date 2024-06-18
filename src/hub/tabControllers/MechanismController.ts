@@ -32,7 +32,7 @@ export default class MechanismController extends TimelineVizController {
     return {};
   }
 
-  set options(options: { [id: string]: any }) {}
+  set options(_options: { [id: string]: any }) {}
 
   newAssets() {}
 

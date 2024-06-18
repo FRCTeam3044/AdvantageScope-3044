@@ -12,7 +12,8 @@ AdvantageScope is a robot diagnostics, log review/analysis, and data visualizati
 
 AdvantageScope includes the following tools:
 
-- A Config Editor/Tuner system designed for use with OxConfig
+- A config editor/tuner system designed for use with OxConfig
+- A command visualizer for debugging wpilib command sequences
 - A wide selection of flexible graphs and charts
 - 2D and 3D field visualizations of odometry data, with customizable CAD-based robots
 - Synchronized video playback from a separately loaded match video

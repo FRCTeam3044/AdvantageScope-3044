@@ -2354,3 +2354,36 @@ td input::-webkit-inner-spin-button {
 .deploy-path-cfg {
   width: calc(100% - 170px);
 }
+
+.debug-container ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+}
+
+.debug-container {
+  overflow: auto;
+  max-height: calc(100% - 3.75em);
+  border: 1px solid #888;
+}
+
+.debug-command {
+  padding: 2px;
+}
+
+.command-dark {
+  background-color: #c0c0c0;
+}
+
+.command-light {
+  background-color: #f0f0f0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .command-dark {
+    background-color: #333;
+  }
+  .command-light {
+    background-color: #555;
+  }
+}
