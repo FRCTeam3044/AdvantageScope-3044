@@ -31,11 +31,23 @@ export default class MechanismVisualizer implements Visualizer {
       }
     });
 
+    let lastDepth = -1;
+    let color = 0;
+
     let renderCommand = (command: string, depth: number) => {
       let li = document.createElement("li");
-      li.innerText = command;
-      li.style.paddingLeft = `${depth * 20 + 10}px`;
-      li.className = depth % 2 === 0 ? "debug-command command-dark" : "debug-command command-light";
+      let html = "";
+      for (let i = 0; i < depth; i++) {
+        html += `&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="verticalBar">│</span>`;
+      }
+      li.innerHTML = html + `&nbsp;&nbsp;` + command;
+
+      if (depth !== lastDepth) {
+        color = 1 - color;
+        lastDepth = depth;
+      }
+
+      li.className = color === 0 ? "debug-command command-dark" : "debug-command command-light";
       this.CONTAINER.appendChild(li);
 
       if (commandsMap[command] !== undefined) {

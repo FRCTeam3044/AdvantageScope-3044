@@ -2368,7 +2368,19 @@ td input::-webkit-inner-spin-button {
 }
 
 .debug-command {
-  padding: 2px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 1.55em;
+}
+.debug-command .verticalBar {
+  padding: 0;
+  margin: 0;
+  font-size: 1.55em;
+  height: 100%;
+  color: #888;
 }
 
 .command-dark {
