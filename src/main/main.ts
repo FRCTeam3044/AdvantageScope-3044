@@ -1,3 +1,4 @@
+import { hex } from "color-convert";
 import {
   BrowserWindow,
   BrowserWindowConstructorOptions,
@@ -7,6 +8,7 @@ import {
   MessageBoxOptions,
   MessageChannelMain,
   MessagePortMain,
+  TitleBarOverlay,
   TouchBar,
   TouchBarSlider,
   app,
@@ -22,16 +24,29 @@ import jsonfile from "jsonfile";
 import net from "net";
 import os from "os";
 import path from "path";
+import { PNG } from "pngjs";
 import { Client } from "ssh2";
 import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
+import { ensureThemeContrast } from "../shared/Colors";
 import ExportOptions from "../shared/ExportOptions";
+import LineGraphFilter from "../shared/LineGraphFilter";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
-import TabType, { getAllTabTypes, getDefaultTabTitle, getTabIcon } from "../shared/TabType";
+import { SourceListConfig, SourceListItemState, SourceListTypeMemory } from "../shared/SourceListConfig";
+import TabType, { getAllTabTypes, getDefaultTabTitle, getTabAccelerator, getTabIcon } from "../shared/TabType";
 import { BUILD_DATE, COPYRIGHT, DISTRIBUTOR, Distributor } from "../shared/buildConstants";
-import { MERGE_MAX_FILES } from "../shared/log/LogUtil";
-import { UnitConversionPreset } from "../shared/units";
+import { MAX_RECENT_UNITS, NoopUnitConversion, UnitConversionPreset } from "../shared/units";
 import {
+  delayBetaSurvey,
+  isBeta,
+  isBetaExpired,
+  isBetaWelcomeComplete,
+  openBetaSurvey,
+  saveBetaWelcomeComplete,
+  shouldPromptBetaSurvey
+} from "./BetaConfig";
+import {
+  APP_VERSION,
   DEFAULT_PREFS,
   DOWNLOAD_CONNECT_TIMEOUT_MS,
   DOWNLOAD_PASSWORD,
@@ -48,6 +63,7 @@ import {
   PATHPLANNER_PING_TEXT,
   PATHPLANNER_PORT,
   PREFS_FILENAME,
+  RECENT_UNITS_FILENAME,
   REPOSITORY,
   RLOG_CONNECT_TIMEOUT_MS,
   RLOG_DATA_TIMEOUT_MS,
@@ -55,6 +71,7 @@ import {
   RLOG_HEARTBEAT_DELAY_MS,
   SATELLITE_DEFAULT_HEIGHT,
   SATELLITE_DEFAULT_WIDTH,
+  TYPE_MEMORY_FILENAME,
   WINDOW_ICON
 } from "./Constants";
 import StateTracker, { ApplicationState, SatelliteWindowState, WindowState } from "./StateTracker";
@@ -69,6 +86,7 @@ let hubWindows: BrowserWindow[] = []; // Ordered by last focus time (recent firs
 let downloadWindow: BrowserWindow | null = null;
 let prefsWindow: BrowserWindow | null = null;
 let licensesWindow: BrowserWindow | null = null;
+let xrWindow: BrowserWindow | null = null;
 let satelliteWindows: { [id: string]: BrowserWindow[] } = {};
 let windowPorts: { [id: number]: MessagePortMain } = {};
 let hubTouchBarSliders: { [id: number]: TouchBarSlider } = {};
@@ -158,12 +176,25 @@ function sendAssets() {
   });
 }
 
+/** Sends the list of active satellites to all hub windows. */
+function sendActiveSatellites() {
+  let activeSatellites: string[] = [];
+  Object.entries(satelliteWindows).forEach(([uuid, windows]) => {
+    if (windows.length > 0) {
+      activeSatellites.push(uuid);
+    }
+  });
+  hubWindows.forEach((window) => {
+    sendMessage(window, "set-active-satellites", activeSatellites);
+  });
+}
+
 /**
  * Process a message from a hub window.
  * @param window The source hub window
  * @param message The received message
  */
-function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
+async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
   if (window.isDestroyed()) return;
   let windowId = window.id;
   switch (message.name) {
@@ -226,34 +257,79 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       stateTracker.saveRendererState(window, message.data);
       break;
 
+    case "save-type-memory":
+      let typeMemory: SourceListTypeMemory = fs.existsSync(TYPE_MEMORY_FILENAME)
+        ? jsonfile.readFileSync(TYPE_MEMORY_FILENAME)
+        : {};
+      let originalTypeMemoryStr = JSON.stringify(typeMemory);
+      Object.entries(message.data as SourceListTypeMemory).forEach(([memoryId, fields]) => {
+        if (memoryId in typeMemory) {
+          typeMemory[memoryId] = { ...typeMemory[memoryId], ...fields };
+        } else {
+          typeMemory[memoryId] = fields;
+        }
+      });
+      let newTypeMemoryStr = JSON.stringify(typeMemory);
+      if (originalTypeMemoryStr !== newTypeMemoryStr) {
+        jsonfile.writeFileSync(TYPE_MEMORY_FILENAME, typeMemory);
+      }
+      break;
+
     case "prompt-update":
       updateChecker.showPrompt();
       break;
 
+    case "open-feedback":
+      shell.openExternal("https://github.com/" + REPOSITORY + "/issues/new/choose");
+      break;
+
     case "historical-start":
-      // Record opened files
-      let paths: string[] = message.data;
-      paths.forEach((path) => app.addRecentDocument(path));
-      fs.writeFile(LAST_OPEN_FILE, paths[0], () => {});
+      {
+        // Record opened files
+        const uuid: string = message.data.uuid;
+        const path: string = message.data.path;
+        app.addRecentDocument(path);
+        fs.writeFile(LAST_OPEN_FILE, path, () => {});
 
-      // Send data if all file reads finished
-      let completedCount = 0;
-      let targetCount = 0;
-      let errorMessage: null | string = null;
-      let hasHootNonPro = false;
-      let sendIfReady = () => {
-        if (completedCount === targetCount) {
-          sendMessage(window, "historical-data", {
-            files: results,
-            error: errorMessage,
-            hasHootNonPro: hasHootNonPro
-          });
-        }
-      };
+        // Send data if all file reads finished
+        let completedCount = 0;
+        let targetCount = 0;
+        let errorMessage: null | string = null;
+        let hasHootNonPro = false;
+        let sendIfReady = () => {
+          if (completedCount === targetCount) {
+            sendMessage(window, "historical-data", {
+              files: results,
+              error: errorMessage,
+              uuid: uuid
+            });
+            if (hasHootNonPro) {
+              let prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
+              if (!prefs.skipHootNonProWarning) {
+                dialog
+                  .showMessageBox(window, {
+                    type: "info",
+                    title: "Alert",
+                    message: "Limited Signals Available",
+                    detail:
+                      "This log file includes a limited number of signals from Phoenix devices. Check the Phoenix documentation for details.",
+                    checkboxLabel: "Don't Show Again",
+                    icon: WINDOW_ICON
+                  })
+                  .then((response) => {
+                    if (response.checkboxChecked) {
+                      prefs.skipHootNonProWarning = true;
+                      jsonfile.writeFileSync(PREFS_FILENAME, prefs);
+                      sendAllPreferences();
+                    }
+                  });
+              }
+            }
+          }
+        };
 
-      // Read data from file
-      let results: (Buffer | null)[][] = paths.map(() => [null]);
-      paths.forEach((path, index) => {
+        // Read data from file
+        let results: (Buffer | null)[] = [null];
         let openPath = (path: string, callback: (buffer: Buffer) => void) => {
           fs.open(path, "r", (error, file) => {
             if (error) {
@@ -262,24 +338,8 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
               return;
             }
             fs.readFile(file, (error, buffer) => {
-              let limitLength = false;
-              if (buffer.length > 75 * 1024 * 1024) {
-                let response = dialog.showMessageBoxSync(window, {
-                  type: "warning",
-                  title: "Warning",
-                  message: "Very large log file",
-                  detail: "This log file is very large. Would you like to read the full log or only the first 75MB?",
-                  buttons: ["Read First 75MB", "Read Full Log"],
-                  defaultId: 0,
-                  icon: WINDOW_ICON
-                });
-                limitLength = response === 0;
-              }
               completedCount++;
               if (!error) {
-                if (limitLength) {
-                  buffer = buffer.subarray(0, Math.min(buffer.length, 75 * 1024 * 1024));
-                }
                 callback(buffer);
               }
               sendIfReady();
@@ -288,10 +348,10 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
         };
         if (path.endsWith(".dslog")) {
           // DSLog, open DSEvents too
-          results[index] = [null, null];
+          results = [null, null];
           targetCount += 2;
-          openPath(path, (buffer) => (results[index][0] = buffer));
-          openPath(path.slice(0, path.length - 5) + "dsevents", (buffer) => (results[index][1] = buffer));
+          openPath(path, (buffer) => (results[0] = buffer));
+          openPath(path.slice(0, path.length - 5) + "dsevents", (buffer) => (results[1] = buffer));
         } else if (path.endsWith(".hoot")) {
           // Hoot, convert to WPILOG
           targetCount += 1;
@@ -303,7 +363,7 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
               convertHoot(path)
                 .then((wpilogPath) => {
                   openPath(wpilogPath, (buffer) => {
-                    results[index][0] = buffer;
+                    results[0] = buffer;
                     fs.rmSync(wpilogPath);
                   });
                 })
@@ -314,32 +374,30 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
                 });
             });
         } else {
-          // Not DSLog, open normally
+          // Normal log, open normally
           targetCount += 1;
-          openPath(path, (buffer) => (results[index][0] = buffer));
+          openPath(path, (buffer) => (results[0] = buffer));
         }
-      });
+      }
       break;
 
-    case "hoot-non-pro-warning":
-      dialog
-        .showMessageBox(window, {
-          type: "info",
-          title: "Alert",
-          message: "About Non-Pro Signals",
-          detail:
-            "This log includes CTRE devices that are not Phoenix Pro licensed. Not all signals are available for these devices (check the Phoenix 6 documentation for details).",
-          checkboxLabel: "Don't Show Again",
-          icon: WINDOW_ICON
-        })
-        .then((response) => {
-          if (response.checkboxChecked) {
-            let prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
-            prefs.skipHootNonProWarning = true;
-            jsonfile.writeFileSync(PREFS_FILENAME, prefs);
-            sendAllPreferences();
-          }
-        });
+    case "numeric-array-deprecation-warning":
+      let shouldForce: boolean = message.data.force;
+      let prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
+      if (!shouldForce && prefs.skipNumericArrayDeprecationWarning) return;
+      if (!prefs.skipNumericArrayDeprecationWarning) {
+        prefs.skipNumericArrayDeprecationWarning = true;
+        jsonfile.writeFileSync(PREFS_FILENAME, prefs);
+        sendAllPreferences();
+      }
+      dialog.showMessageBox(window, {
+        type: "info",
+        title: "Alert",
+        message: "Deprecated data format",
+        detail:
+          "The legacy numeric array format for structured data is deprecated and will be removed in 2026. Check the AdvantageScope documentation for details on migrating to a modern alternative.",
+        icon: WINDOW_ICON
+      });
       break;
 
     case "live-rlog-start":
@@ -461,6 +519,26 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       shell.openExternal(message.data);
       break;
 
+    case "open-app-menu":
+    case "close-app-menu":
+      {
+        let index: number = message.data.index;
+        let appMenu = Menu.getApplicationMenu();
+        if (appMenu === null || index >= appMenu.items.length) return;
+        let submenu = appMenu.items[index].submenu;
+        if (submenu === undefined) return;
+        if (message.name === "open-app-menu") {
+          submenu.popup({
+            window: window,
+            x: message.data.coordinates[0],
+            y: message.data.coordinates[1]
+          });
+        } else {
+          submenu.closePopup(window);
+        }
+      }
+      break;
+
     case "ask-playback-speed":
       const playbackSpeedMenu = new Menu();
       Array(0.25, 0.5, 1, 1.5, 2, 4, 8).forEach((value) => {
@@ -486,6 +564,198 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       newTabPopup(window);
       break;
 
+    case "source-list-type-prompt":
+      let uuid: string = message.data.uuid;
+      let config: SourceListConfig = message.data.config;
+      let state: SourceListItemState = message.data.state;
+      let coordinates: [number, number] = message.data.coordinates;
+      const menu = new Menu();
+
+      let respond = () => {
+        sendMessage(window, "source-list-type-response", {
+          uuid: uuid,
+          state: state
+        });
+      };
+
+      // Make color icon
+      let getIcon = (value: string): Electron.NativeImage | undefined => {
+        if (!value.startsWith("#")) {
+          return undefined;
+        }
+
+        // Make icon with color
+        const size = 15;
+        const color = hex.rgb(ensureThemeContrast(value, nativeTheme.shouldUseDarkColors));
+        const png = new PNG({ width: size, height: size });
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const idx = (y * size + x) * 4;
+            png.data[idx + 0] = color[0];
+            png.data[idx + 1] = color[1];
+            png.data[idx + 2] = color[2];
+            png.data[idx + 3] = 255;
+          }
+        }
+        const data = PNG.sync.write(png).toString("base64");
+        return nativeImage.createFromDataURL("data:image/png;base64," + data);
+      };
+
+      // Add options
+      let currentTypeConfig = config.types.find((typeConfig) => typeConfig.key === state.type)!;
+      if (currentTypeConfig.options.length === 1) {
+        let optionConfig = currentTypeConfig.options[0];
+        optionConfig.values.forEach((optionValue) => {
+          menu.append(
+            new MenuItem({
+              label: optionValue.display,
+              type: "checkbox",
+              checked: optionValue.key === state.options[optionConfig.key],
+              icon: getIcon(optionValue.key),
+              click() {
+                state.options[optionConfig.key] = optionValue.key;
+                respond();
+              }
+            })
+          );
+        });
+      } else {
+        currentTypeConfig.options.forEach((optionConfig) => {
+          menu.append(
+            new MenuItem({
+              label: optionConfig.display,
+              submenu: optionConfig.values.map((optionValue) => {
+                return {
+                  label: optionValue.display,
+                  type: "checkbox",
+                  checked: optionValue.key === state.options[optionConfig.key],
+                  icon: getIcon(optionValue.key),
+                  click() {
+                    state.options[optionConfig.key] = optionValue.key;
+                    respond();
+                  }
+                };
+              })
+            })
+          );
+        });
+      }
+
+      // Add type options
+      let validTypes = config.types.filter(
+        (typeConfig) =>
+          typeConfig.sourceTypes.includes(state.logType) && typeConfig.childOf === currentTypeConfig.childOf
+      );
+      if (validTypes.length > 1) {
+        if (menu.items.length > 0) {
+          menu.append(
+            new MenuItem({
+              type: "separator"
+            })
+          );
+        }
+        validTypes.forEach((typeConfig) => {
+          let current = state.type === typeConfig.key;
+          let optionConfig = current
+            ? undefined
+            : typeConfig.options.find((optionConfig) => optionConfig.key === typeConfig.initialSelectionOption);
+          menu.append(
+            new MenuItem({
+              label: typeConfig.display,
+              type: current ? "checkbox" : optionConfig !== undefined ? "submenu" : "normal",
+              checked: current,
+              submenu:
+                optionConfig === undefined
+                  ? undefined
+                  : optionConfig.values.map((optionValue) => {
+                      return {
+                        label: optionValue.display,
+                        icon: getIcon(optionValue.key),
+                        click() {
+                          state.type = typeConfig.key;
+                          let newOptions: { [key: string]: string } = {};
+                          typeConfig.options.forEach((optionConfig) => {
+                            if (
+                              optionConfig.key in state.options &&
+                              optionConfig.values
+                                .map((valueConfig) => valueConfig.key)
+                                .includes(state.options[optionConfig.key])
+                            ) {
+                              newOptions[optionConfig.key] = state.options[optionConfig.key];
+                            } else {
+                              newOptions[optionConfig.key] = optionConfig.values[0].key;
+                            }
+                          });
+                          state.options = newOptions;
+                          state.options[typeConfig.initialSelectionOption!] = optionValue.key;
+                          respond();
+                        }
+                      };
+                    }),
+              click:
+                optionConfig !== undefined
+                  ? undefined
+                  : () => {
+                      state.type = typeConfig.key;
+                      let newOptions: { [key: string]: string } = {};
+                      typeConfig.options.forEach((optionConfig) => {
+                        if (
+                          optionConfig.key in state.options &&
+                          optionConfig.values
+                            .map((valueConfig) => valueConfig.key)
+                            .includes(state.options[optionConfig.key])
+                        ) {
+                          newOptions[optionConfig.key] = state.options[optionConfig.key];
+                        } else {
+                          newOptions[optionConfig.key] = optionConfig.values[0].key;
+                        }
+                      });
+                      state.options = newOptions;
+                      respond();
+                    }
+            })
+          );
+        });
+      }
+
+      if (menu.items.length === 0) {
+        menu.append(
+          new MenuItem({
+            label: "No Options",
+            enabled: false
+          })
+        );
+      }
+      menu.popup({
+        window: window,
+        x: coordinates[0],
+        y: coordinates[1]
+      });
+      break;
+
+    case "source-list-clear-prompt":
+      const clearMenu = new Menu();
+      clearMenu.append(
+        new MenuItem({
+          label: "Clear All",
+          click() {
+            sendMessage(window, "source-list-clear-response", {
+              uuid: message.data.uuid
+            });
+          }
+        })
+      );
+      clearMenu.popup({
+        window: window,
+        x: message.data.coordinates[0],
+        y: message.data.coordinates[1]
+      });
+      break;
+
+    case "source-list-help":
+      openSourceListHelp(window, message.data);
+      break;
+
     case "ask-edit-axis":
       let legend: string = message.data.legend;
       const editAxisMenu = new Menu();
@@ -504,6 +774,7 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
         // Left and right controls
         let lockedRange: [number, number] | null = message.data.lockedRange;
         let unitConversion: UnitConversionPreset = message.data.unitConversion;
+        let filter: LineGraphFilter = message.data.filter;
 
         editAxisMenu.append(
           new MenuItem({
@@ -514,7 +785,8 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
               sendMessage(window, "edit-axis", {
                 legend: legend,
                 lockedRange: lockedRange === null ? [null, null] : null,
-                unitConversion: unitConversion
+                unitConversion: unitConversion,
+                filter: filter
               });
             }
           })
@@ -528,8 +800,90 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
                 sendMessage(window, "edit-axis", {
                   legend: legend,
                   lockedRange: newLockedRange,
-                  unitConversion: unitConversion
+                  unitConversion: unitConversion,
+                  filter: filter
                 });
+              });
+            }
+          })
+        );
+        editAxisMenu.append(
+          new MenuItem({
+            type: "separator"
+          })
+        );
+        let updateRecents = (newUnitConversion: UnitConversionPreset) => {
+          let newUnitConversionStr = JSON.stringify(newUnitConversion);
+          if (newUnitConversionStr !== JSON.stringify(NoopUnitConversion)) {
+            let recentUnits: UnitConversionPreset[] = fs.existsSync(RECENT_UNITS_FILENAME)
+              ? jsonfile.readFileSync(RECENT_UNITS_FILENAME)
+              : [];
+            recentUnits = recentUnits.filter((x) => JSON.stringify(x) !== newUnitConversionStr);
+            recentUnits.splice(0, 0, newUnitConversion);
+            while (recentUnits.length > MAX_RECENT_UNITS) {
+              recentUnits.pop();
+            }
+            jsonfile.writeFileSync(RECENT_UNITS_FILENAME, recentUnits);
+          }
+        };
+        editAxisMenu.append(
+          new MenuItem({
+            label: "Edit Units...",
+            click() {
+              createUnitConversionWindow(window, unitConversion, (newUnitConversion) => {
+                sendMessage(window, "edit-axis", {
+                  legend: legend,
+                  lockedRange: lockedRange,
+                  unitConversion: newUnitConversion,
+                  filter: filter
+                });
+                updateRecents(newUnitConversion);
+              });
+            }
+          })
+        );
+        let recentUnits: UnitConversionPreset[] = fs.existsSync(RECENT_UNITS_FILENAME)
+          ? jsonfile.readFileSync(RECENT_UNITS_FILENAME)
+          : [];
+        editAxisMenu.append(
+          new MenuItem({
+            label: "Recent Presets",
+            type: "submenu",
+            enabled: recentUnits.length > 0,
+            submenu: recentUnits.map((preset) => {
+              let fromToText =
+                preset.from === undefined || preset.to === undefined
+                  ? ""
+                  : preset.from?.replace(/(^\w|\s\w|\/\w)/g, (m) => m.toUpperCase()) +
+                    " \u2192 " +
+                    preset.to?.replace(/(^\w|\s\w|\/\w)/g, (m) => m.toUpperCase());
+              let factorText = preset.factor === 1 ? "" : "x" + preset.factor.toString();
+              let bothPresent = fromToText.length > 0 && factorText.length > 0;
+              return {
+                label: fromToText + (bothPresent ? ", " : "") + factorText,
+                click() {
+                  sendMessage(window, "edit-axis", {
+                    legend: legend,
+                    lockedRange: lockedRange,
+                    unitConversion: preset,
+                    filter: filter
+                  });
+                  updateRecents(preset);
+                }
+              };
+            })
+          })
+        );
+        editAxisMenu.append(
+          new MenuItem({
+            label: "Reset Units",
+            enabled: JSON.stringify(unitConversion) !== JSON.stringify(NoopUnitConversion),
+            click() {
+              sendMessage(window, "edit-axis", {
+                legend: legend,
+                lockedRange: lockedRange,
+                unitConversion: NoopUnitConversion,
+                filter: filter
               });
             }
           })
@@ -541,21 +895,50 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
         );
         editAxisMenu.append(
           new MenuItem({
-            label: "Unit Conversion...",
+            label: "Differentiate",
+            type: "checkbox",
+            checked: filter === LineGraphFilter.Differentiate,
             click() {
-              createUnitConversionWindow(window, unitConversion, (newUnitConversion) => {
-                sendMessage(window, "edit-axis", {
-                  legend: legend,
-                  lockedRange: lockedRange,
-                  unitConversion: newUnitConversion
-                });
+              sendMessage(window, "edit-axis", {
+                legend: legend,
+                lockedRange: lockedRange,
+                unitConversion: unitConversion,
+                filter: filter === LineGraphFilter.Differentiate ? LineGraphFilter.None : LineGraphFilter.Differentiate
               });
             }
           })
         );
+        editAxisMenu.append(
+          new MenuItem({
+            label: "Integrate",
+            type: "checkbox",
+            checked: filter === LineGraphFilter.Integrate,
+            click() {
+              sendMessage(window, "edit-axis", {
+                legend: legend,
+                lockedRange: lockedRange,
+                unitConversion: unitConversion,
+                filter: filter === LineGraphFilter.Integrate ? LineGraphFilter.None : LineGraphFilter.Integrate
+              });
+            }
+          })
+        );
+        editAxisMenu.append(
+          new MenuItem({
+            type: "separator"
+          })
+        );
       }
 
-      // Always include clear button
+      // Always include help and clear buttons
+      editAxisMenu.append(
+        new MenuItem({
+          label: "Help",
+          click() {
+            openSourceListHelp(window, message.data.config);
+          }
+        })
+      );
       editAxisMenu.append(
         new MenuItem({
           label: "Clear All",
@@ -596,11 +979,11 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       break;
 
     case "update-satellite":
-      let uuid = message.data.uuid;
+      let satelliteUUID = message.data.uuid;
       let command = message.data.command;
       let title = message.data.title;
-      if (uuid in satelliteWindows) {
-        satelliteWindows[uuid].forEach((satellite) => {
+      if (satelliteUUID in satelliteWindows) {
+        satelliteWindows[satelliteUUID].forEach((satellite) => {
           if (satellite.isVisible()) {
             sendMessage(satellite, "render", { command: command, title: title });
           }
@@ -674,6 +1057,11 @@ function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       jsonfile.writeFileSync(PREFS_FILENAME, message.data);
       sendAllPreferences();
       break;
+
+    case "open-xr":
+      openXR(window);
+      break;
+
     default:
       console.warn("Unknown message from hub renderer process", message);
       break;
@@ -698,21 +1086,22 @@ function newTabPopup(window: BrowserWindow) {
   const newTabMenu = new Menu();
   getAllTabTypes()
     .slice(1)
-    .forEach((tabType, index) => {
+    .forEach((tabType) => {
       newTabMenu.append(
         new MenuItem({
           label: getTabIcon(tabType) + " " + getDefaultTabTitle(tabType),
-          accelerator: index < 9 ? "CmdOrCtrl+" + (index + 1).toString() : "",
+          accelerator: getTabAccelerator(tabType),
           click() {
             sendMessage(window, "new-tab", tabType);
           }
         })
       );
     });
+
   newTabMenu.popup({
     window: window,
     x: window.getBounds().width - 12,
-    y: 10
+    y: process.platform === "win32" ? 48 : 10
   });
 }
 
@@ -1143,47 +1532,51 @@ function setupMenu() {
       label: "File",
       submenu: [
         {
-          label: "Open...",
+          label: "Open Log(s)...",
           accelerator: "CmdOrCtrl+O",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             dialog
               .showOpenDialog(window, {
-                title: "Select a robot log file to open",
-                properties: ["openFile"],
+                title: "Select the robot log file(s) to open",
+                message: "If multiple files are selected, timestamps will be synchronized",
+                properties: ["openFile", "multiSelections"],
                 filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents", "hoot"] }],
                 defaultPath: getDefaultLogPath()
               })
               .then((files) => {
                 if (files.filePaths.length > 0) {
-                  sendMessage(window, "open-files", [files.filePaths[0]]);
+                  sendMessage(window!, "open-files", { files: files.filePaths, merge: false });
                 }
               });
           }
         },
         {
-          label: "Open Multiple...",
+          label: "Add New Log(s)...",
           accelerator: "CmdOrCtrl+Shift+O",
-          async click(_, window) {
+          async click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
-            let filesResponse = await dialog.showOpenDialog(window, {
-              title: "Select up to " + MERGE_MAX_FILES.toString() + " robot log files to open",
-              message: "Up to " + MERGE_MAX_FILES.toString() + " files can be opened together",
-              properties: ["openFile", "multiSelections"],
-              filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents", "hoot"] }],
-              defaultPath: getDefaultLogPath()
-            });
-            let files = filesResponse.filePaths;
-            if (files.length === 0) {
-              return;
-            }
-            sendMessage(window, "open-files", files.slice(0, MERGE_MAX_FILES));
+            dialog
+              .showOpenDialog(window, {
+                title: "Select the robot log file(s) to add to the current log",
+                properties: ["openFile", "multiSelections"],
+                filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents", "hoot"] }],
+                defaultPath: getDefaultLogPath()
+              })
+              .then((files) => {
+                if (files.filePaths.length > 0) {
+                  sendMessage(window!, "open-files", { files: files.filePaths, merge: true });
+                }
+              });
           }
         },
         {
           label: "Connect to Robot",
           accelerator: "CmdOrCtrl+K",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             sendMessage(window, "start-live", false);
           }
@@ -1191,7 +1584,8 @@ function setupMenu() {
         {
           label: "Connect to Simulator",
           accelerator: "CmdOrCtrl+Shift+K",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             sendMessage(window, "start-live", true);
           }
@@ -1199,24 +1593,27 @@ function setupMenu() {
         {
           label: "Download Logs...",
           accelerator: "CmdOrCtrl+D",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined) return;
             openDownload(window);
           }
         },
         {
           label: "Load Zebra MotionWorks™",
-          accelerator: "Option+Z",
-          click(_, window) {
+          accelerator: "Alt+Z",
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined) return;
             sendMessage(window, "load-zebra");
           }
         },
         {
           label: "Select Deploy Directory...",
-          click(item, window) {
+          click(item, baseWindow) {
             // Display a dialog to select the deploy directory
-            if (window == null || !hubWindows.includes(window)) return;
+            const window = baseWindow as BrowserWindow | undefined;
+            if (window == undefined || !hubWindows.includes(window)) return;
             dialog
               .showOpenDialog(window, {
                 title: "Select the deploy directory",
@@ -1243,7 +1640,8 @@ function setupMenu() {
         {
           label: "Export Data...",
           accelerator: "CmdOrCtrl+E",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             sendMessage(window, "start-export");
           }
@@ -1254,7 +1652,8 @@ function setupMenu() {
             {
               label: "Connect to Robot",
               accelerator: "CmdOrCtrl+P",
-              click(_, window) {
+              click(_, baseWindow) {
+                const window = baseWindow as BrowserWindow | undefined;
                 if (window === undefined || !hubWindows.includes(window)) return;
                 sendMessage(window, "start-publish", false);
               }
@@ -1262,15 +1661,17 @@ function setupMenu() {
             {
               label: "Connect to Simulator",
               accelerator: "CmdOrCtrl+Shift+P",
-              click(_, window) {
+              click(_, baseWindow) {
+                const window = baseWindow as BrowserWindow | undefined;
                 if (window === undefined || !hubWindows.includes(window)) return;
                 sendMessage(window, "start-publish", true);
               }
             },
             {
               label: "Stop Publishing",
-              accelerator: "Option+P",
-              click(_, window) {
+              accelerator: "CmdOrCtrl+Alt+P",
+              click(_, baseWindow) {
+                const window = baseWindow as BrowserWindow | undefined;
                 if (window === undefined || !hubWindows.includes(window)) return;
                 sendMessage(window, "stop-publish");
               }
@@ -1291,7 +1692,7 @@ function setupMenu() {
               .then((response) => {
                 if (!response.canceled) {
                   let state = stateTracker.getCurrentApplicationState() as ApplicationState & { version: string };
-                  state.version = app.isPackaged ? app.getVersion() : "dev";
+                  state.version = APP_VERSION;
                   jsonfile.writeFile(response.filePath!, state, { spaces: 2 });
                 }
               });
@@ -1352,7 +1753,7 @@ function setupMenu() {
                   }
 
                   // Check version compatability
-                  if (app.isPackaged && data.version !== app.getVersion()) {
+                  if (app.isPackaged && data.version !== APP_VERSION) {
                     let result = dialog.showMessageBoxSync({
                       type: "warning",
                       title: "Warning",
@@ -1403,7 +1804,37 @@ function setupMenu() {
       ]
     },
     { role: "editMenu" },
-    { role: "viewMenu" },
+    {
+      role: "viewMenu",
+      submenu: [
+        { role: "reload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        {
+          label: "Toggle Sidebar",
+          accelerator: "CmdOrCtrl+.",
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
+            if (window === undefined || !hubWindows.includes(window)) return;
+            sendMessage(window, "toggle-sidebar");
+          }
+        },
+        {
+          label: "Toggle Controls",
+          accelerator: "CmdOrCtrl+/",
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
+            if (window === undefined || !hubWindows.includes(window)) return;
+            sendMessage(window, "toggle-controls");
+          }
+        },
+        { role: "togglefullscreen" }
+      ]
+    },
     {
       label: "Tabs",
       submenu: [
@@ -1411,11 +1842,12 @@ function setupMenu() {
           label: "New Tab",
           submenu: getAllTabTypes()
             .slice(1)
-            .map((tabType, index) => {
+            .map((tabType) => {
               return {
                 label: getTabIcon(tabType) + " " + getDefaultTabTitle(tabType),
-                accelerator: index < 9 ? "CmdOrCtrl+" + (index + 1).toString() : "",
-                click(_, window) {
+                accelerator: getTabAccelerator(tabType),
+                click(_, baseWindow) {
+                  const window = baseWindow as BrowserWindow | undefined;
                   if (window === undefined || !hubWindows.includes(window)) return;
                   sendMessage(window, "new-tab", tabType);
                 }
@@ -1426,7 +1858,8 @@ function setupMenu() {
           label: "New Tab (Popup)", // Hidden item to add keyboard shortcut
           visible: false,
           accelerator: "CmdOrCtrl+T",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window) newTabPopup(window);
           }
         },
@@ -1434,7 +1867,8 @@ function setupMenu() {
         {
           label: "Previous Tab",
           accelerator: "CmdOrCtrl+Left",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             sendMessage(window, "move-tab", -1);
           }
@@ -1442,7 +1876,8 @@ function setupMenu() {
         {
           label: "Next Tab",
           accelerator: "CmdOrCtrl+Right",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             sendMessage(window, "move-tab", 1);
           }
@@ -1451,7 +1886,8 @@ function setupMenu() {
         {
           label: "Shift Left",
           accelerator: "CmdOrCtrl+[",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             sendMessage(window, "shift-tab", -1);
           }
@@ -1459,7 +1895,8 @@ function setupMenu() {
         {
           label: "Shift Right",
           accelerator: "CmdOrCtrl+]",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined || !hubWindows.includes(window)) return;
             sendMessage(window, "shift-tab", 1);
           }
@@ -1468,7 +1905,8 @@ function setupMenu() {
         {
           label: "Close Tab",
           accelerator: "CmdOrCtrl+W",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined) return;
             if (hubWindows.includes(window)) {
               sendMessage(window, "close-tab");
@@ -1613,7 +2051,8 @@ function setupMenu() {
         {
           label: "Settings...",
           accelerator: "Cmd+,",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined) return;
             openPreferences(window);
           }
@@ -1630,7 +2069,8 @@ function setupMenu() {
           : []),
         {
           label: "Show Licenses...",
-          click(_, window) {
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
             if (window === undefined) return;
             openLicenses(window);
           }
@@ -1658,7 +2098,8 @@ function setupMenu() {
       {
         label: "Show Preferences...",
         accelerator: "Ctrl+,",
-        click(_, window) {
+        click(_, baseWindow) {
+          const window = baseWindow as BrowserWindow | undefined;
           if (window === undefined) return;
           openPreferences(window);
         }
@@ -1675,7 +2116,8 @@ function setupMenu() {
         : []),
       {
         label: "Show Licenses...",
-        click(_, window) {
+        click(_, baseWindow) {
+          const window = baseWindow as BrowserWindow | undefined;
           if (window === undefined) return;
           openLicenses(window);
         }
@@ -1705,7 +2147,7 @@ function createAboutWindow() {
       title: "About",
       message: "AdvantageScope",
       detail: COPYRIGHT + "\n\n" + detail,
-      buttons: ["Close", "Copy & Close"],
+      buttons: ["Close", process.platform === "win32" ? "Copy and Close" : "Copy & Close"],
       defaultId: 0,
       icon: WINDOW_ICON
     })
@@ -1748,14 +2190,39 @@ function createHubWindow(state?: WindowState) {
   }
 
   // Set fancy window effects
-  if (process.platform === "darwin") {
-    prefs.vibrancy = "sidebar";
-    if (Number(os.release().split(".")[0]) >= 20) prefs.titleBarStyle = "hiddenInset";
+  switch (process.platform) {
+    case "darwin":
+      prefs.vibrancy = "sidebar";
+      if (Number(os.release().split(".")[0]) >= 20) prefs.titleBarStyle = "hiddenInset"; // macOS Big Sur
+      break;
+    case "win32":
+      prefs.titleBarStyle = "hidden";
+      let releaseSplit = os.release().split(".");
+      if (Number(releaseSplit[releaseSplit.length - 1]) >= 22621) {
+        // Windows 11 22H2
+        prefs.backgroundMaterial = "acrylic";
+      }
+      let overlayOptions: TitleBarOverlay = {
+        color: "#00000000",
+        symbolColor: nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000",
+        height: 38
+      };
+      prefs.titleBarOverlay = overlayOptions;
+      nativeTheme.addListener("updated", () => {
+        if (window) {
+          overlayOptions.symbolColor = nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000";
+          window.setTitleBarOverlay(overlayOptions);
+        }
+      });
+      break;
   }
 
   // Create window
   let window = new BrowserWindow(prefs);
   hubWindows.push(window);
+  if (process.platform === "linux") {
+    window.setMenuBarVisibility(false);
+  }
 
   // Add touch bar menu
   let resetTouchBar = () => {
@@ -1806,7 +2273,48 @@ function createHubWindow(state?: WindowState) {
   resetTouchBar();
 
   // Show window when loaded
-  window.once("ready-to-show", window.show);
+  window.once("ready-to-show", () => {
+    window.show();
+    if (isBeta()) {
+      if (isBetaExpired()) {
+        dialog
+          .showMessageBox(window, {
+            type: "info",
+            title: "Alert",
+            message: "Beta is complete",
+            detail:
+              "The AdvantageScope beta is complete. " +
+              (DISTRIBUTOR === Distributor.WPILib
+                ? "Please update to the latest stable release of WPILib."
+                : "Please download the latest stable release of AdvantageScope from GitHub."),
+            buttons: ["Quit", "Ignore"],
+            defaultId: 0
+          })
+          .then((result) => {
+            if (result.response === 0) app.quit();
+          });
+      } else if (!isBetaWelcomeComplete()) {
+        openBetaWelcome(window);
+      } else if (shouldPromptBetaSurvey()) {
+        dialog
+          .showMessageBox(window, {
+            type: "info",
+            title: "Alert",
+            message: "We need your help!",
+            detail:
+              "Please take 5 minutes to give us some feedback on the AdvantageScope beta. Users like you help us make AdvantageScope better for everyone!",
+            buttons: ["Give Feedback", "Not Now"]
+          })
+          .then((result) => {
+            if (result.response === 0) {
+              openBetaSurvey();
+            } else {
+              delayBetaSurvey();
+            }
+          });
+      }
+    }
+  });
   let firstLoad = true;
   let createPorts = () => {
     const { port1, port2 } = new MessageChannelMain();
@@ -1836,10 +2344,15 @@ function createHubWindow(state?: WindowState) {
     sendMessage(window, "set-version", {
       platform: process.platform,
       platformRelease: os.release(),
-      appVersion: app.isPackaged ? app.getVersion() : "dev"
+      appVersion: APP_VERSION
     });
     sendMessage(window, "show-update-button", updateChecker.getShouldPrompt());
+    sendMessage(window, "show-feedback-button", isBeta());
     sendAllPreferences();
+    sendActiveSatellites();
+    if (fs.existsSync(TYPE_MEMORY_FILENAME)) {
+      sendMessage(window, "restore-type-memory", jsonfile.readFileSync(TYPE_MEMORY_FILENAME));
+    }
     if (firstLoad && state !== undefined) {
       sendMessage(window, "restore-state", state.state);
     } else {
@@ -1873,8 +2386,8 @@ function createHubWindow(state?: WindowState) {
   });
   powerMonitor.on("on-ac", () => sendMessage(window, "set-battery", false));
   powerMonitor.on("on-battery", () => sendMessage(window, "set-battery", true));
-
   window.loadFile(path.join(__dirname, "../www/hub.html"));
+
   return window;
 }
 
@@ -1891,7 +2404,7 @@ function createEditRangeWindow(
 ) {
   const editWindow = new BrowserWindow({
     width: 300,
-    height: process.platform === "win32" ? 125 : 108, // "useContentSize" is broken on Windows when not resizable
+    height: 108,
     useContentSize: true,
     resizable: false,
     icon: WINDOW_ICON,
@@ -1935,7 +2448,7 @@ function createUnitConversionWindow(
 ) {
   const unitConversionWindow = new BrowserWindow({
     width: 300,
-    height: process.platform === "win32" ? 179 : 162, // "useContentSize" is broken on Windows when not resizable
+    height: 162,
     useContentSize: true,
     resizable: false,
     icon: WINDOW_ICON,
@@ -1979,7 +2492,7 @@ function createRenameTabWindow(
 ) {
   const renameTabWindow = new BrowserWindow({
     width: 300,
-    height: process.platform === "win32" ? 98 : 81, // "useContentSize" is broken on Windows when not resizable
+    height: 81,
     useContentSize: true,
     resizable: false,
     icon: WINDOW_ICON,
@@ -2019,7 +2532,7 @@ function createRenameTabWindow(
 function createEditFovWindow(parentWindow: Electron.BrowserWindow, fov: number, callback: (newFov: number) => void) {
   const editFovWindow = new BrowserWindow({
     width: 300,
-    height: process.platform === "win32" ? 98 : 81, // "useContentSize" is broken on Windows when not resizable
+    height: 81,
     useContentSize: true,
     resizable: false,
     icon: WINDOW_ICON,
@@ -2063,7 +2576,7 @@ function createExportWindow(
 ) {
   const exportWindow = new BrowserWindow({
     width: 300,
-    height: process.platform === "win32" ? 206 : 189, // "useContentSize" is broken on Windows when not resizable
+    height: 189,
     useContentSize: true,
     resizable: false,
     icon: WINDOW_ICON,
@@ -2160,6 +2673,7 @@ function createSatellite(
       })
     : undefined;
   const state = "state" in config ? config.state : undefined;
+  const uuid = configData !== undefined ? configData.uuid : state!.uuid;
 
   const width = state === undefined ? SATELLITE_DEFAULT_WIDTH : state.width;
   const height = state === undefined ? SATELLITE_DEFAULT_HEIGHT : state.height;
@@ -2215,8 +2729,33 @@ function createSatellite(
           select3DCameraPopup(satellite, message.data.options, message.data.selectedIndex, message.data.fov);
           break;
 
+        case "add-table-range":
+          hubWindows.forEach((window) => {
+            sendMessage(window, "add-table-range", {
+              controllerUUID: uuid,
+              rendererUUID: message.data.uuid,
+              range: message.data.range
+            });
+          });
+          break;
+
         case "save-state":
           stateTracker.saveRendererState(satellite, message.data);
+          break;
+
+        case "call-selection-setter":
+          message.data.uuid = configData !== undefined ? configData.uuid : state!.uuid;
+          hubWindows.forEach((window) => {
+            sendMessage(window, "call-selection-setter", message.data);
+          });
+          break;
+
+        case "open-link":
+          shell.openExternal(message.data);
+          break;
+
+        default:
+          console.warn("Unknown message from satellite renderer process", message);
           break;
       }
     });
@@ -2241,15 +2780,16 @@ function createSatellite(
   powerMonitor.on("on-ac", () => sendMessage(satellite, "set-battery", false));
   powerMonitor.on("on-battery", () => sendMessage(satellite, "set-battery", true));
 
-  const uuid = configData !== undefined ? configData.uuid : state!.uuid;
   if (!(uuid in satelliteWindows)) {
     satelliteWindows[uuid] = [];
   }
   satelliteWindows[uuid].push(satellite);
   stateTracker.saveSatelliteIds(satelliteWindows);
+  sendActiveSatellites();
   satellite.once("closed", () => {
     satelliteWindows[uuid!].splice(satelliteWindows[uuid!].indexOf(satellite), 1);
     stateTracker.saveSatelliteIds(satelliteWindows);
+    sendActiveSatellites();
   });
 }
 
@@ -2265,7 +2805,7 @@ function openPreferences(parentWindow: Electron.BrowserWindow) {
 
   const width = 400;
   const rows = 12;
-  const height = process.platform === "win32" ? rows * 27 + 114 : rows * 27 + 54; // "useContentSize" is broken on Windows when not resizable
+  const height = rows * 27 + 54;
   prefsWindow = new BrowserWindow({
     width: width,
     height: height,
@@ -2393,15 +2933,129 @@ function openLicenses(parentWindow: Electron.BrowserWindow) {
   licensesWindow.loadFile(path.join(__dirname, "../www/licenses.html"));
 }
 
-// APPLICATION EVENTS
-
-// Workaround to set menu bar color on some Linux environments
-if (process.platform === "linux" && fs.existsSync(PREFS_FILENAME)) {
-  let prefs: Preferences = jsonfile.readFileSync(PREFS_FILENAME);
-  if (prefs.theme === "dark") {
-    process.env["GTK_THEME"] = "Adwaita:dark";
+/**
+ * Creates a new XR window if it doesn't already exist.
+ * @param parentWindow The parent window to use for alignment
+ */
+function openXR(parentWindow: Electron.BrowserWindow) {
+  if (xrWindow !== null && !xrWindow.isDestroyed()) {
+    xrWindow.focus();
+    return;
   }
+
+  const width = 400;
+  const height = 400;
+  xrWindow = new BrowserWindow({
+    width: width,
+    height: height,
+    x: Math.floor(parentWindow.getBounds().x + parentWindow.getBounds().width / 2 - width / 2),
+    y: Math.floor(parentWindow.getBounds().y + parentWindow.getBounds().height / 2 - height / 2),
+    resizable: false,
+    icon: WINDOW_ICON,
+    show: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js")
+    }
+  });
+
+  // Finish setup
+  xrWindow.setMenu(null);
+  xrWindow.setFullScreenable(false); // Call separately b/c the normal behavior is broken: https://github.com/electron/electron/pull/39086
+  xrWindow.once("ready-to-show", xrWindow.show);
+  xrWindow.once("close", downloadStop);
+  xrWindow.loadFile(path.join(__dirname, "../www/xr.html"));
 }
+
+/**
+ * Creates a new source list help window.
+ * @param parentWindow The parent window to use for alignment
+ */
+function openSourceListHelp(parentWindow: Electron.BrowserWindow, config: SourceListConfig) {
+  const width = 350;
+  const height = 500;
+  let helpWindow = new BrowserWindow({
+    width: width,
+    height: height,
+    minWidth: width - 75,
+    maxWidth: width + 250,
+    minHeight: 200,
+    x: Math.floor(parentWindow.getBounds().x + 30),
+    y: Math.floor(parentWindow.getBounds().y + parentWindow.getBounds().height / 2 - height / 2),
+    resizable: true,
+    icon: WINDOW_ICON,
+    show: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js")
+    }
+  });
+
+  // Finish setup
+  helpWindow.setMenu(null);
+  helpWindow.setFullScreenable(false); // Call separately b/c the normal behavior is broken: https://github.com/electron/electron/pull/39086
+  helpWindow.once("ready-to-show", helpWindow.show);
+  helpWindow.once("close", downloadStop);
+  helpWindow.webContents.on("dom-ready", () => {
+    // Create ports on reload
+    if (helpWindow === null) return;
+    const { port1, port2 } = new MessageChannelMain();
+    helpWindow.webContents.postMessage("port", null, [port1]);
+    windowPorts[helpWindow.id] = port2;
+    port2.start();
+
+    // Init messages
+    sendMessage(helpWindow, "set-config", config);
+    sendAllPreferences();
+  });
+  helpWindow.loadFile(path.join(__dirname, "../www/sourceListHelp.html"));
+}
+
+/**
+ * Creates a new beta help window.
+ * @param parentWindow The parent window to use for alignment
+ */
+function openBetaWelcome(parentWindow: Electron.BrowserWindow) {
+  const width = 450;
+  const height = 490;
+  let betaWelcome = new BrowserWindow({
+    width: width,
+    height: height,
+    resizable: false,
+    icon: WINDOW_ICON,
+    show: false,
+    fullscreenable: false,
+    modal: true,
+    useContentSize: true,
+    parent: parentWindow,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js")
+    }
+  });
+  // Finish setup
+  betaWelcome.setMenu(null);
+  betaWelcome.setFullScreenable(false); // Call separately b/c the normal behavior is broken: https://github.com/electron/electron/pull/39086
+  betaWelcome.once("ready-to-show", betaWelcome.show);
+  betaWelcome.on("close", () => {
+    app.quit();
+  });
+  betaWelcome.webContents.on("dom-ready", () => {
+    // Create ports on reload
+    if (betaWelcome === null) return;
+    const { port1, port2 } = new MessageChannelMain();
+    betaWelcome.webContents.postMessage("port", null, [port1]);
+    port2.on("message", () => {
+      betaWelcome.destroy();
+      saveBetaWelcomeComplete();
+      shouldPromptBetaSurvey(); // Ensures survey is scheduled
+    });
+    port2.start();
+  });
+  betaWelcome.loadFile(path.join(__dirname, "../www/betaWelcome.html"));
+}
+
+// APPLICATION EVENTS
 
 function checkForUpdate(alwaysPrompt: boolean) {
   updateChecker.check().then(() => {
@@ -2427,6 +3081,9 @@ function getDefaultLogPath(): string | undefined {
 
 // "unsafe-eval" is required in the hub for protobufjs
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
+
+// Silence unhandled promise rejections
+process.on("unhandledRejection", () => {});
 
 app.whenReady().then(() => {
   // Check preferences and set theme
@@ -2546,6 +3203,12 @@ app.whenReady().then(() => {
     }
     if ("skipHootNonProWarning" in oldPrefs && typeof oldPrefs.skipHootNonProWarning === "boolean") {
       prefs.skipHootNonProWarning = oldPrefs.skipHootNonProWarning;
+    }
+    if (
+      "skipNumericArrayDeprecationWarning" in oldPrefs &&
+      typeof oldPrefs.skipNumericArrayDeprecationWarning === "boolean"
+    ) {
+      prefs.skipNumericArrayDeprecationWarning = oldPrefs.skipNumericArrayDeprecationWarning;
     }
     if ("skipFrcLogFolderDefault" in oldPrefs && typeof oldPrefs.skipFrcLogFolderDefault === "boolean") {
       prefs.skipFrcLogFolderDefault = oldPrefs.skipFrcLogFolderDefault;

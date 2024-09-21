@@ -1,11 +1,11 @@
 enum TabType {
   Documentation,
   LineGraph,
+  Odometry,
+  ThreeDimension,
   Table,
   Console,
   Statistics,
-  Odometry,
-  ThreeDimension,
   Video,
   Joysticks,
   Swerve,
@@ -19,17 +19,6 @@ enum TabType {
 
 export default TabType;
 
-export const TIMELINE_VIZ_TYPES: TabType[] = [
-  TabType.Odometry,
-  TabType.ThreeDimension,
-  TabType.Video,
-  TabType.Points,
-  TabType.Joysticks,
-  TabType.Swerve,
-  TabType.Mechanism,
-  TabType.Lines
-];
-
 export function getAllTabTypes(): TabType[] {
   return Object.values(TabType).filter((tabType) => typeof tabType === "number") as TabType[];
 }
@@ -40,16 +29,16 @@ export function getDefaultTabTitle(type: TabType): string {
       return "";
     case TabType.LineGraph:
       return "Line Graph";
+    case TabType.Odometry:
+      return "Odometry";
+    case TabType.ThreeDimension:
+      return "3D Field";
     case TabType.Table:
       return "Table";
     case TabType.Console:
       return "Console";
     case TabType.Statistics:
       return "Statistics";
-    case TabType.Odometry:
-      return "Odometry";
-    case TabType.ThreeDimension:
-      return "3D Field";
     case TabType.Video:
       return "Video";
     case TabType.Joysticks:
@@ -79,16 +68,16 @@ export function getTabIcon(type: TabType): string {
       return "📖";
     case TabType.LineGraph:
       return "📉";
+    case TabType.Odometry:
+      return "🗺";
+    case TabType.ThreeDimension:
+      return "👀";
     case TabType.Table:
       return "🔢";
     case TabType.Console:
       return "💬";
     case TabType.Statistics:
       return "📊";
-    case TabType.Odometry:
-      return "🗺";
-    case TabType.ThreeDimension:
-      return "👀";
     case TabType.Video:
       return "🎬";
     case TabType.Joysticks:
@@ -98,7 +87,7 @@ export function getTabIcon(type: TabType): string {
     case TabType.Mechanism:
       return "⚙️";
     case TabType.Points:
-      return "🔵";
+      return "📍";
     case TabType.Metadata:
       return "🔍";
     case TabType.Tuner:
@@ -110,4 +99,41 @@ export function getTabIcon(type: TabType): string {
     default:
       return "";
   }
+}
+
+export function getTabAccelerator(type: TabType): string {
+  if (type === TabType.Documentation) return "";
+  return (
+    "Alt+" +
+    (() => {
+      switch (type) {
+        case TabType.LineGraph:
+          return "G";
+        case TabType.Odometry:
+          return "O";
+        case TabType.ThreeDimension:
+          return "3";
+        case TabType.Table:
+          return "T";
+        case TabType.Console:
+          return "C";
+        case TabType.Statistics:
+          return "S";
+        case TabType.Video:
+          return "V";
+        case TabType.Joysticks:
+          return "J";
+        case TabType.Swerve:
+          return "D";
+        case TabType.Mechanism:
+          return "M";
+        case TabType.Points:
+          return "P";
+        case TabType.Metadata:
+          return "I";
+        default:
+          return "";
+      }
+    })()
+  );
 }

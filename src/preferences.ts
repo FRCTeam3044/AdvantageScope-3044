@@ -107,7 +107,8 @@ window.addEventListener("message", (event) => {
             clickToGo: clickToGo,
             clickToGoKey: CLICK_TO_GO_NT_KEY.value,
             userAssetsFolder: oldPrefs.userAssetsFolder,
-            skipFrcLogFolderDefault: oldPrefs.skipFrcLogFolderDefault
+            skipFrcLogFolderDefault: oldPrefs.skipFrcLogFolderDefault,
+            skipNumericArrayDeprecationWarning: oldPrefs.skipNumericArrayDeprecationWarning
           };
           messagePort.postMessage(newPrefs);
         } else {

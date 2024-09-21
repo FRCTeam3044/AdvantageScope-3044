@@ -17,25 +17,31 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "18.x"
+          node-version: "20.x"
           cache: "npm"
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
       - name: Install Node.js dependencies
         run: npm ci
         env:
           ASCOPE_NO_FFMPEG: true
       - name: Check formatting
         run: npm run check-format
+      - name: Compile WebAssembly
+        run: mkdir bundles; npm run wasm:compile
       - name: Compile bundles (FRC 3044)
         run: npm run compile
       - name: Upload bundles (FRC 3044)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bundles
-          path: bundles/*.js
+          path: |
+            bundles/*.js
+            bundles/*.wasm
 
   build-win:
     name: Build for Windows (${{ matrix.arch }})
@@ -49,16 +55,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "18.x"
+          node-version: "20.x"
           cache: "npm"
       - name: Install Node.js dependencies
         run: npm ci
       - name: Download bundles
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: bundles
           path: bundles
@@ -71,7 +77,7 @@ jobs:
           Move-Item -Path "dist\AdvantageScope*.exe" -Destination "advantagescope-3044-win-${{ matrix.arch }}-dev.exe"
       - name: Upload development artifact
         if: github.event_name != 'release'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: advantagescope-3044-win-${{ matrix.arch }}-dev.exe
           path: advantagescope-3044-win-${{ matrix.arch }}-dev.exe
@@ -104,16 +110,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "18.x"
+          node-version: "20.x"
           cache: "npm"
       - name: Install Node.js dependencies
         run: npm ci
       - name: Download bundles
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: bundles
           path: bundles
@@ -126,7 +132,7 @@ jobs:
           mv dist/AdvantageScope-*.dmg advantagescope-3044-mac-${{ matrix.arch }}-dev.dmg
       - name: Upload development artifact
         if: github.event_name != 'release'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: advantagescope-3044-mac-${{ matrix.arch }}-dev.dmg
           path: advantagescope-3044-mac-${{ matrix.arch }}-dev.dmg
@@ -168,11 +174,11 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "18.x"
+          node-version: "20.x"
           cache: "npm"
       - name: Install Node.js dependencies
         run: npm ci
@@ -188,7 +194,7 @@ jobs:
           sudo flatpak install flathub org.freedesktop.Sdk/${{ matrix.arch.flatpakArch }}/22.08 --assumeyes
           sudo flatpak install flathub org.electronjs.Electron2.BaseApp/${{ matrix.arch.flatpakArch }}/22.08 --assumeyes
       - name: Download bundles
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: bundles
           path: bundles
@@ -201,7 +207,7 @@ jobs:
           mv dist/*.${{ matrix.format }} advantagescope-3044-linux-${{ matrix.arch.electronArch }}-dev.${{ matrix.format }}
       - name: Upload development artifact
         if: github.event_name != 'release'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: advantagescope-3044-linux-${{ matrix.arch.electronArch }}-dev.${{ matrix.format }}
           path: advantagescope-3044-linux-${{ matrix.arch.electronArch }}-dev.${{ matrix.format }}

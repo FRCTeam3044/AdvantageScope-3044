@@ -1,35 +1,42 @@
 import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
 import { HubState } from "../shared/HubState";
 import { SIM_ADDRESS, USB_ADDRESS } from "../shared/IPAddresses";
-import Log from "../shared/log/Log";
-import { AKIT_TIMESTAMP_KEYS } from "../shared/log/LogUtil";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
-import { clampValue, htmlEncode, scaleValue } from "../shared/util";
+import Selection from "../shared/Selection";
+import { SourceListItemState, SourceListTypeMemory } from "../shared/SourceListConfig";
+import Log from "../shared/log/Log";
+import { AKIT_TIMESTAMP_KEYS, MERGE_PREFIX } from "../shared/log/LogUtil";
+import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
+import SelectionImpl from "./SelectionImpl";
+import Sidebar from "./Sidebar";
+import SourceList from "./SourceList";
+import Tabs from "./Tabs";
+import WorkerManager from "./WorkerManager";
 import { HistoricalDataSource, HistoricalDataSourceStatus } from "./dataSources/HistoricalDataSource";
 import { LiveDataSource, LiveDataSourceStatus } from "./dataSources/LiveDataSource";
 import LiveDataTuner from "./dataSources/LiveDataTuner";
 import loadZebra from "./dataSources/LoadZebra";
-import { NT4Publisher, NT4PublisherStatus } from "./dataSources/nt4/NT4Publisher";
-import NT4Source from "./dataSources/nt4/NT4Source";
 import PathPlannerSource from "./dataSources/PathPlannerSource";
 import PhoenixDiagnosticsSource from "./dataSources/PhoenixDiagnosticsSource";
+import { NT4Publisher, NT4PublisherStatus } from "./dataSources/nt4/NT4Publisher";
+import NT4Source from "./dataSources/nt4/NT4Source";
 import RLOGServerSource from "./dataSources/rlog/RLOGServerSource";
-import Selection from "./Selection";
-import Sidebar from "./Sidebar";
-import Tabs from "./Tabs";
-import WorkerManager from "./WorkerManager";
 
 // Constants
-const SAVE_PERIOD_MS = 250;
+const STATE_SAVE_PERIOD_MS = 250;
+const TYPE_MEMORY_SAVE_PERIOD_MS = 1000;
 const DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
 const UPDATE_BUTTON = document.getElementsByClassName("update")[0] as HTMLElement;
+const FEEDBACK_BUTTON = document.getElementsByClassName("feedback")[0] as HTMLElement;
+
 // Global variables
 declare global {
   interface Window {
     log: Log;
     preferences: Preferences | null;
     assets: AdvantageScopeAssets | null;
+    typeMemory: SourceListTypeMemory;
     platform: string;
     platformRelease: string;
     appVersion: string;
@@ -42,17 +49,26 @@ declare global {
     sidebar: Sidebar;
     tabs: Tabs;
     tuner: LiveDataTuner | null;
+    getLoadingFields(): Set<string>;
+
     messagePort: MessagePort | null;
     setNt4: (topic: string, value: any, type: string) => void;
     isConnected: () => boolean;
     sendMainMessage: (name: string, data?: any) => void;
     startDrag: (x: number, y: number, offsetX: number, offsetY: number, data: any) => void;
     writeOxConfig(deployDir: string, timestamp: string, config: string): void;
+
+    // Provided by preload script
+    electron: {
+      getFilePath(file: File): string;
+    };
   }
 }
+
 window.log = new Log();
 window.preferences = null;
 window.assets = null;
+window.typeMemory = {};
 window.platform = "";
 window.platformRelease = "";
 window.isFullscreen = false;
@@ -60,17 +76,26 @@ window.isFocused = true;
 window.isBattery = false;
 window.fps = false;
 
-window.selection = new Selection();
-window.sidebar = new Sidebar();
+window.selection = new SelectionImpl();
+window.sidebar = new Sidebar(() =>
+  historicalSources.map((entry) => {
+    let components = entry.path.split(window.platform === "win32" ? "\\" : "/");
+    return components[components.length - 1];
+  })
+);
 window.tabs = new Tabs();
 window.tuner = null;
 window.messagePort = null;
 
-let historicalSource: HistoricalDataSource | null = null;
+let historicalSources: {
+  source: HistoricalDataSource;
+  path: string;
+  progress: number | null;
+  progressIncluded: boolean;
+}[] = [];
 let liveSource: LiveDataSource | null = null;
 let publisher: NT4Publisher | null = null;
 let isExporting = false;
-let logPath: string | null = null;
 let logFriendlyName: string | null = null;
 let liveActive = false;
 let liveConnected = false;
@@ -104,17 +129,38 @@ function setLoading(progress: number | null) {
 
 function updateFancyWindow() {
   // Using fancy title bar?
-  if (window.platform === "darwin" && Number(window.platformRelease.split(".")[0]) >= 20 && !window.isFullscreen) {
-    document.body.classList.add("fancy-title-bar");
+  let releaseSplit = window.platformRelease.split(".");
+  if (
+    window.platform === "darwin" &&
+    Number(releaseSplit[0]) >= 20 && // macOS Big Sur
+    !window.isFullscreen
+  ) {
+    document.body.classList.add("fancy-title-bar-mac");
   } else {
-    document.body.classList.remove("fancy-title-bar");
+    document.body.classList.remove("fancy-title-bar-mac");
+  }
+  if (window.platform === "win32") {
+    document.body.classList.add("fancy-title-bar-win");
+  } else {
+    document.body.classList.remove("fancy-title-bar-win");
+  }
+  if (window.platform === "linux") {
+    document.body.classList.add("fancy-title-bar-linux");
+  } else {
+    document.body.classList.remove("fancy-title-bar-linux");
   }
 
   // Using fancy sidebar?
   if (window.platform === "darwin") {
-    document.body.classList.add("fancy-side-bar");
+    document.body.classList.add("fancy-side-bar-mac");
   } else {
-    document.body.classList.remove("fancy-side-bar");
+    document.body.classList.remove("fancy-side-bar-mac");
+  }
+  if (window.platform === "win32" && Number(releaseSplit[releaseSplit.length - 1]) >= 22621) {
+    // Windows 11 22H2
+    document.body.classList.add("fancy-side-bar-win");
+  } else {
+    document.body.classList.remove("fancy-side-bar-win");
   }
 }
 
@@ -169,7 +215,11 @@ function restoreState(state: HubState) {
 
 setInterval(() => {
   window.sendMainMessage("save-state", saveState());
-}, SAVE_PERIOD_MS);
+}, STATE_SAVE_PERIOD_MS);
+
+setInterval(() => {
+  window.sendMainMessage("save-type-memory", window.typeMemory);
+}, TYPE_MEMORY_SAVE_PERIOD_MS);
 
 // MANAGE DRAGGING
 
@@ -184,6 +234,7 @@ window.startDrag = (x, y, offsetX, offsetY, data) => {
   DRAG_ITEM.hidden = false;
   DRAG_ITEM.style.left = (x - offsetX).toString() + "px";
   DRAG_ITEM.style.top = (y - offsetY).toString() + "px";
+  document.body.style.cursor = "grabbing";
 };
 
 function dragMove(x: number, y: number) {
@@ -210,6 +261,7 @@ function dragEnd() {
   if (dragActive) {
     dragActive = false;
     DRAG_ITEM.hidden = true;
+    document.body.style.cursor = "";
     window.dispatchEvent(
       new CustomEvent("drag-update", {
         detail: { end: true, x: dragLastX, y: dragLastY, data: dragData }
@@ -249,43 +301,91 @@ window.requestAnimationFrame(periodic);
 
 // DATA SOURCE HANDLING
 
+window.getLoadingFields = () => {
+  let output: Set<string> = new Set();
+  historicalSources.forEach((entry) => {
+    entry.source.getLoadingFields().forEach((field) => output.add(field));
+  });
+  return output;
+};
+
 /** Connects to a historical data source. */
-function startHistorical(paths: string[]) {
-  historicalSource?.stop();
+function startHistorical(path: string, clear = true, merge = false) {
+  clear = clear || !merge;
+  if (clear) {
+    historicalSources.forEach((entry) => entry.source.stop());
+    historicalSources = [];
+    window.log = new Log();
+    window.sidebar.refresh();
+    window.tabs.refresh();
+  }
+
   liveSource?.stop();
   window.tuner = null;
   liveActive = false;
+  liveConnected = false;
   setLoading(null);
 
-  historicalSource = new HistoricalDataSource();
-  historicalSource.openFile(
-    paths,
+  let updateLoading = () => {
+    if (historicalSources.every((entry) => entry.progress === null)) {
+      historicalSources.forEach((entry) => (entry.progressIncluded = false));
+    }
+
+    let totalProgress = 0;
+    let progressCount = 0;
+    historicalSources.forEach((entry) => {
+      if (!entry.progressIncluded) return;
+      totalProgress += entry.progress === null ? 1 : entry.progress;
+      progressCount++;
+    });
+
+    if (progressCount === 0) {
+      setLoading(null);
+    } else {
+      setLoading(totalProgress / progressCount);
+    }
+  };
+
+  let source = new HistoricalDataSource();
+  let sourceEntry = { source: source, path: path, progress: 0, progressIncluded: true } as {
+    source: HistoricalDataSource;
+    path: string;
+    progress: number | null;
+    progressIncluded: boolean;
+  };
+  historicalSources.push(sourceEntry);
+  source.openFile(
+    window.log,
+    path,
+    merge ? "/" + MERGE_PREFIX + (historicalSources.length - 1).toString() : "",
     (status: HistoricalDataSourceStatus) => {
-      if (paths.length === 1) {
-        let components = paths[0].split(window.platform === "win32" ? "\\" : "/");
+      if (historicalSources.length === 1) {
+        let components = historicalSources[0].path.split(window.platform === "win32" ? "\\" : "/");
         logFriendlyName = components[components.length - 1];
       } else {
-        logFriendlyName = paths.length.toString() + " Log Files";
+        logFriendlyName = historicalSources.length.toString() + " Log Files";
       }
       switch (status) {
         case HistoricalDataSourceStatus.Reading:
-        case HistoricalDataSourceStatus.Decoding:
+        case HistoricalDataSourceStatus.DecodingInitial:
           setWindowTitle(logFriendlyName, "Loading");
           break;
-        case HistoricalDataSourceStatus.Ready:
+        case HistoricalDataSourceStatus.DecodingField:
+        case HistoricalDataSourceStatus.Idle:
           setWindowTitle(logFriendlyName);
-          setLoading(null);
+          sourceEntry.progress = null;
+          updateLoading();
           break;
         case HistoricalDataSourceStatus.Error:
           setWindowTitle(logFriendlyName, "Error");
-          setLoading(null);
-          let message =
-            "There was a problem while reading the log file" + (paths.length === 1 ? "" : "s") + ". Please try again.";
-          if (historicalSource && historicalSource.getCustomError() !== null) {
-            message = historicalSource.getCustomError()!;
+          sourceEntry.progress = null;
+          updateLoading();
+          let message = "There was a problem while reading the log file. Please try again.";
+          if (source.getCustomError() !== null) {
+            message = source.getCustomError()!;
           }
           window.sendMainMessage("error", {
-            title: "Failed to open log" + (paths.length === 1 ? "" : "s"),
+            title: "Failed to open log",
             content: message
           });
           break;
@@ -294,21 +394,20 @@ function startHistorical(paths: string[]) {
       }
     },
     (progress: number) => {
-      setLoading(progress);
+      sourceEntry.progress = progress;
+      updateLoading();
     },
-    (log: Log) => {
-      window.log = log;
-      logPath = paths[0];
-      liveConnected = false;
+    (hasNewFields: boolean) => {
       window.sidebar.refresh();
-      window.tabs.refresh();
+      if (hasNewFields) window.tabs.refresh();
     }
   );
 }
 
 /** Connects to a live data source. */
 function startLive(isSim: boolean) {
-  historicalSource?.stop();
+  historicalSources.forEach((entry) => entry.source.stop());
+  historicalSources = [];
   liveSource?.stop();
   publisher?.stop();
   liveActive = true;
@@ -369,7 +468,6 @@ function startLive(isSim: boolean) {
       }
     },
     (log: Log, timeSupplier: () => number) => {
-      logPath = null;
       liveConnected = true;
       window.log = log;
       window.selection.setLiveConnected(timeSupplier);
@@ -391,10 +489,12 @@ document.addEventListener("drop", (event) => {
   if (event.dataTransfer) {
     let files: string[] = [];
     for (const file of event.dataTransfer.files) {
-      files.push(file.path);
+      files.push(window.electron.getFilePath(file));
     }
     if (files.length > 0) {
-      startHistorical(files);
+      files.forEach((file, index) => {
+        startHistorical(file, index === 0, files.length > 1);
+      });
     }
   }
 });
@@ -422,6 +522,10 @@ UPDATE_BUTTON.addEventListener("click", () => {
   window.sendMainMessage("prompt-update");
 });
 
+FEEDBACK_BUTTON.addEventListener("click", () => {
+  window.sendMainMessage("open-feedback");
+});
+
 // Update touch bar slider position
 setInterval(() => {
   if (window.platform === "darwin") {
@@ -439,10 +543,14 @@ setInterval(() => {
   }
 }, 1000 / 60);
 
-function handleMainMessage(message: NamedMessage) {
+async function handleMainMessage(message: NamedMessage) {
   switch (message.name) {
     case "restore-state":
       restoreState(message.data);
+      break;
+
+    case "restore-type-memory":
+      window.typeMemory = message.data;
       break;
 
     case "set-fullscreen":
@@ -512,15 +620,73 @@ function handleMainMessage(message: NamedMessage) {
       }
       break;
 
+    case "set-active-satellites":
+      window.tabs.setActiveSatellites(message.data);
+      break;
+
+    case "call-selection-setter":
+      let uuid: string = message.data.uuid;
+      let name: string = message.data.name;
+      let args: any[] = message.data.args;
+      if (window.tabs.isValidUUID(uuid)) {
+        switch (name) {
+          case "setHoveredTime":
+            window.selection.setHoveredTime(args[0]);
+            break;
+          case "setSelectedTime":
+            window.selection.setSelectedTime(args[0]);
+            break;
+          case "goIdle":
+            window.selection.goIdle();
+            break;
+          case "play":
+            window.selection.play();
+            break;
+          case "pause":
+            window.selection.pause();
+            break;
+          case "togglePlayback":
+            window.selection.togglePlayback();
+            break;
+          case "lock":
+            window.selection.lock();
+            break;
+          case "unlock":
+            window.selection.unlock();
+            break;
+          case "toggleLock":
+            window.selection.toggleLock();
+            break;
+          case "stepCycle":
+            window.selection.stepCycle(args[0]);
+            break;
+          case "setGrabZoomRange":
+            window.selection.setGrabZoomRange(args[0]);
+            break;
+          case "finishGrabZoom":
+            window.selection.finishGrabZoom();
+            break;
+          case "applyTimelineScroll":
+            window.selection.applyTimelineScroll(args[0], args[1], args[2]);
+            break;
+        }
+      }
+      break;
+
     case "show-update-button":
       document.documentElement.style.setProperty("--show-update-button", message.data ? "1" : "0");
       UPDATE_BUTTON.hidden = !message.data;
       break;
 
+    case "show-feedback-button":
+      document.documentElement.style.setProperty("--show-feedback-button", message.data ? "1" : "0");
+      FEEDBACK_BUTTON.hidden = !message.data;
+      break;
+
     case "historical-data":
-      if (historicalSource !== null) {
-        historicalSource.handleMainMessage(message.data);
-      }
+      historicalSources.forEach((entry) => {
+        entry.source.handleMainMessage(message.data);
+      });
       break;
 
     case "live-data":
@@ -530,13 +696,27 @@ function handleMainMessage(message: NamedMessage) {
       break;
 
     case "open-files":
+      let files: string[] = message.data.files;
+      let merge: boolean = message.data.merge;
+
       if (isExporting) {
         window.sendMainMessage("error", {
-          title: "Cannot open file",
+          title: "Cannot open file" + (files.length !== 1 ? "s" : ""),
           content: "Please wait for the export to finish, then try again."
         });
+      } else if (merge && (liveActive || historicalSources.length === 0)) {
+        window.sendMainMessage("error", {
+          title: "Cannot insert file" + (files.length !== 1 ? "s" : ""),
+          content: 'No log files are currently loaded. Choose "Open Log(s)" to load new files.'
+        });
       } else {
-        startHistorical(message.data);
+        files.forEach((file, index) => {
+          if (merge) {
+            startHistorical(file, false, true);
+          } else {
+            startHistorical(file, index === 0, files.length > 1);
+          }
+        });
       }
       break;
 
@@ -563,6 +743,20 @@ function handleMainMessage(message: NamedMessage) {
           content: "Please open a log file with NetworkTables data, then try again."
         });
       } else {
+        // Start mock progress
+        let mockProgress = 0;
+        let mockProgressStart = new Date().getTime();
+        let mockProgressInterval = setInterval(() => {
+          mockProgress = calcMockProgress((new Date().getTime() - mockProgressStart) / 1000, 1);
+          setLoading(mockProgress);
+        }, 1000 / 60);
+
+        // Load missing fields
+        if (historicalSources.length > 0) {
+          await historicalSources[0].source.loadAllFields(); // Root NT table is always from the first source
+        }
+
+        // Start publisher
         publisher?.stop();
         publisher = new NT4Publisher(message.data, (status) => {
           if (logFriendlyName === null) return;
@@ -607,6 +801,14 @@ function handleMainMessage(message: NamedMessage) {
       window.selection.setPlaybackSpeed(message.data);
       break;
 
+    case "toggle-sidebar":
+      window.sidebar.toggleVisible();
+      break;
+
+    case "toggle-controls":
+      window.tabs.toggleControlsVisible();
+      break;
+
     case "new-tab":
       window.tabs.addTab(message.data);
       break;
@@ -627,12 +829,36 @@ function handleMainMessage(message: NamedMessage) {
       window.tabs.renameTab(message.data.index, message.data.name);
       break;
 
+    case "source-list-type-response":
+      {
+        let uuid: string = message.data.uuid;
+        let state: SourceListItemState = message.data.state;
+        if (uuid in SourceList.typePromptCallbacks) {
+          SourceList.typePromptCallbacks[uuid](state);
+        }
+      }
+      break;
+
+    case "source-list-clear-response":
+      {
+        let uuid: string = message.data.uuid;
+        if (uuid in SourceList.clearPromptCallbacks) {
+          SourceList.clearPromptCallbacks[uuid]();
+        }
+      }
+      break;
+
     case "add-discrete-enabled":
       window.tabs.addDiscreteEnabled();
       break;
 
     case "edit-axis":
-      window.tabs.editAxis(message.data.legend, message.data.lockedRange, message.data.unitConversion);
+      window.tabs.editAxis(
+        message.data.legend,
+        message.data.lockedRange,
+        message.data.unitConversion,
+        message.data.filter
+      );
       break;
 
     case "clear-axis":
@@ -647,11 +873,16 @@ function handleMainMessage(message: NamedMessage) {
       window.tabs.setFov(message.data);
       break;
 
+    case "add-table-range":
+      window.tabs.addTableRange(message.data.controllerUUID, message.data.rendererUUID, message.data.range);
+      break;
+
     case "video-data":
       window.tabs.processVideoData(message.data);
       break;
 
     case "start-export":
+      let logPath = historicalSources.length > 0 ? historicalSources[0].path : null;
       if (isExporting) {
         window.sendMainMessage("error", {
           title: "Cannot export data",
@@ -681,8 +912,18 @@ function handleMainMessage(message: NamedMessage) {
       break;
 
     case "prepare-export":
-      setLoading(null);
-      historicalSource?.stop();
+      // Start mock progress
+      let mockProgress = 0;
+      let mockProgressStart = new Date().getTime();
+      let mockProgressInterval = setInterval(() => {
+        mockProgress = calcMockProgress((new Date().getTime() - mockProgressStart) / 1000, 0.25);
+        setLoading(mockProgress);
+      }, 1000 / 60);
+
+      // Load missing fields
+      await Promise.all(historicalSources.map((entry) => entry.source.loadAllFields()));
+
+      // Convert to export format
       WorkerManager.request(
         "../bundles/hub$exportWorker.js",
         {
@@ -690,7 +931,8 @@ function handleMainMessage(message: NamedMessage) {
           log: window.log.toSerialized()
         },
         (progress: number) => {
-          setLoading(progress);
+          clearInterval(mockProgressInterval);
+          setLoading(scaleValue(progress, [0, 1], [mockProgress, 1]));
         }
       )
         .then((content) => {
