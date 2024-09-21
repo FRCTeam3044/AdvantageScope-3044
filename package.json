@@ -13,6 +13,7 @@
   "scripts": {
     "start": "electron bundles/main.js",
     "compile": "rollup -c --configMain && rollup -c --configLargeRenderers && rollup -c --configSmallRenderers && rollup -c --configWorkers",
+    "prebuild": "npm run compile && npm run wasm:compile && npm run docs:build-embed",
     "tabs-compile": "rollup -c --configTabEditing",
     "build-linux": "electron-builder build --linux",
     "build": "npm run compile && npm run wasm:compile && npm run docs:build-embed && electron-builder build",
