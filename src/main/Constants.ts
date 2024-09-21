@@ -25,7 +25,7 @@ export const FRC_LOG_FOLDER = "C:\\Users\\Public\\Documents\\FRC\\Log Files";
 export const WINDOW_ICON = process.platform === "darwin" ? undefined : path.join(__dirname, "../icons/window-icon.png");
 export const DEFAULT_PREFS: Preferences = {
   theme: process.platform === "linux" ? "light" : "system",
-  rioAddress: "10.00.00.2",
+  rioAddress: "10.30.44.2",
   rioPath: "/U/logs",
   liveMode: "nt4",
   liveSubscribeMode: "low-bandwidth",
