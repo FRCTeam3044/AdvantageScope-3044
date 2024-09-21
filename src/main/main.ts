@@ -1540,7 +1540,7 @@ function setupMenu() {
             dialog
               .showOpenDialog(window, {
                 title: "Select the robot log file(s) to open",
-                message: "If multiple files are selected, timestamps will be synchronized",
+                message: "If multiple files are selected, timestamps will be aligned automatically",
                 properties: ["openFile", "multiSelections"],
                 filters: [{ name: "Robot logs", extensions: ["rlog", "wpilog", "dslog", "dsevents", "hoot"] }],
                 defaultPath: getDefaultLogPath()
@@ -2167,7 +2167,8 @@ function createHubWindow(state?: WindowState) {
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      webviewTag: true
     }
   };
 
@@ -2272,6 +2273,12 @@ function createHubWindow(state?: WindowState) {
   };
   resetTouchBar();
 
+  // Open docs URLs in browser
+  window.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url);
+    return { action: "deny" };
+  });
+
   // Show window when loaded
   window.once("ready-to-show", () => {
     window.show();
@@ -2302,7 +2309,7 @@ function createHubWindow(state?: WindowState) {
             title: "Alert",
             message: "We need your help!",
             detail:
-              "Please take 5 minutes to give us some feedback on the AdvantageScope beta. Users like you help us make AdvantageScope better for everyone!",
+              "Please take 10 minutes to give us some feedback on the AdvantageScope beta. Users like you help us make AdvantageScope better for everyone!",
             buttons: ["Give Feedback", "Not Now"]
           })
           .then((result) => {
@@ -2777,6 +2784,11 @@ function createSatellite(
     sendAllPreferences();
     firstLoad = false;
   });
+  satellite.webContents.setWindowOpenHandler((details) => {
+    // Open docs URLs in browser
+    shell.openExternal(details.url);
+    return { action: "deny" };
+  });
   powerMonitor.on("on-ac", () => sendMessage(satellite, "set-battery", false));
   powerMonitor.on("on-battery", () => sendMessage(satellite, "set-battery", true));
 
@@ -3018,17 +3030,16 @@ function openSourceListHelp(parentWindow: Electron.BrowserWindow, config: Source
  */
 function openBetaWelcome(parentWindow: Electron.BrowserWindow) {
   const width = 450;
-  const height = 490;
+  const height = process.platform === "win32" ? 530 : 490;
   let betaWelcome = new BrowserWindow({
     width: width,
     height: height,
+    useContentSize: true,
     resizable: false,
     icon: WINDOW_ICON,
     show: false,
-    fullscreenable: false,
-    modal: true,
-    useContentSize: true,
     parent: parentWindow,
+    modal: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js")
     }

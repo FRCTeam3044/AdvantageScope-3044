@@ -68,6 +68,8 @@ jobs:
         with:
           name: bundles
           path: bundles
+      - name: Build documentation
+        run: npm run docs:build-embed
       - name: Build app
         run: npx electron-builder build --${{ matrix.arch }} --publish never
         env:
@@ -123,6 +125,8 @@ jobs:
         with:
           name: bundles
           path: bundles
+      - name: Build documentation
+        run: npm run docs:build-embed
       - name: Build app
         run: npx electron-builder build --${{ matrix.arch }} --publish never
         env:
@@ -198,6 +202,8 @@ jobs:
         with:
           name: bundles
           path: bundles
+      - name: Build documentation
+        run: npm run docs:build-embed
       - name: Build app
         run: npx electron-builder build --${{ matrix.arch.electronArch }} -l ${{ matrix.format }} --publish never
         env:
@@ -235,11 +241,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Get release info
         id: get_release_info
         uses: kaliber5/action-get-release@v1
         with:
           token: ${{ github.token }}
+      - name: Publish AppArmor profile
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.get_release_info.outputs.upload_url }}
+          asset_path: advantagescope.AppArmor
+          asset_name: advantagescope.AppArmor
+          asset_content_type: "text/plain"
       - name: Edit release
         uses: irongut/EditRelease@v1.2.0
         with:
