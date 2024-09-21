@@ -678,17 +678,17 @@ export default class Tabs {
 
   /** Confirms the dangerous action of copying all data to different modes. */
   confirmCopy(all: boolean, data: Object) {
-    // if (this.tabList[this.selectedTab].type == TabType.Tuner) {
-    //   let controller = this.tabList[this.selectedTab].controller as TunerController;
-    //   if (all) controller.confirmCopyAll(data);
-    //   else controller.confirmCopyOne(data);
-    // }
+    if (this.tabList[this.selectedTab].type == TabType.Tuner) {
+      let controller = this.tabList[this.selectedTab].renderer as TunerRenderer;
+      if (all) controller.confirmCopyAll(data);
+      else controller.confirmCopyOne(data);
+    }
   }
 
   /** Confirms the dangerous action of copying all data to different modes. */
   alertOxConfigWriteResult(result: string) {
     if (this.tabList[this.selectedTab].type == TabType.Tuner) {
-      //(this.tabList[this.selectedTab].controller as TunerController).writeResult(result);
+      (this.tabList[this.selectedTab].renderer as TunerRenderer).writeResult(result);
     } else if (this.tabList[this.selectedTab].type == TabType.ConfigEditor) {
       (this.tabList[this.selectedTab].renderer as ConfigEditorRenderer).writeResult(result);
     }

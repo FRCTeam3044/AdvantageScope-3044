@@ -2134,7 +2134,7 @@ function setupMenu() {
 function createAboutWindow() {
   let detailLines: string[] = [];
   detailLines.push("Version: " + (app.isPackaged ? app.getVersion() : "Development"));
-  detailLines.push("Distributor: " + (DISTRIBUTOR === Distributor.WPILib ? "WPILib" : "FRC 6328"));
+  detailLines.push("Distributor: " + (DISTRIBUTOR === Distributor.WPILib ? "WPILib" : "FRC 3044"));
   detailLines.push("Platform: " + process.platform + "-" + process.arch);
   detailLines.push("Build Date: " + BUILD_DATE);
   detailLines.push("Electron: " + process.versions.electron);

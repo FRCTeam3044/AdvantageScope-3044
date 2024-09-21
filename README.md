@@ -24,7 +24,7 @@ AdvantageScope includes the following tools:
 
 **View the [online documentation](/docs/INDEX.md) or find it offline by clicking the 📖 icon in the tab bar.**
 
-Feedback, feature requests, and bug reports are welcome on the [issues page](https://github.com/Mechanical-Advantage/AdvantageScope/issues). For non-public inquires, please send a message to software@team6328.org.
+Feedback, feature requests, and bug reports are welcome on the [issues page](https://github.com/FRCTeam3044/AdvantageScope-3044/issues).
 
 ![Example screenshot](/docs/resources/screenshot-light.png)
 
