@@ -30,7 +30,7 @@ const config: Config = {
         docs: {
           routeBasePath: "/",
           sidebarPath: "./sidebars.ts",
-          sidebarCollapsed: false
+          sidebarCollapsed: true
         },
         theme: {
           customCss: "./src/css/custom.css"
@@ -40,7 +40,6 @@ const config: Config = {
   ],
 
   themeConfig: {
-    // Replace with your project's social card
     image: "img/social.png",
     navbar: {
       title: "AdvantageScope Documentation",
@@ -61,9 +60,34 @@ const config: Config = {
         }
       ]
     },
+    footer: {
+      copyright: "Copyright © 2021-2024 FRC 6328",
+      links: [
+        {
+          label: "Littleton Robotics",
+          href: "https://littletonrobotics.org"
+        },
+        {
+          label: "AdvantageKit",
+          href: "https://docs.advantagekit.org"
+        },
+        {
+          label: "WPILib Docs",
+          href: "https://docs.wpilib.org"
+        }
+      ]
+    },
     colorMode: {
       disableSwitch: true,
       respectPrefersColorScheme: true
+    },
+    announcementBar: {
+      id: "offline_info",
+      content:
+        "This documentation is available <b>offline</b> by clicking the 📖 icon in the tab bar of AdvantageScope.",
+      backgroundColor: "#446ce3",
+      textColor: "#ffffff",
+      isCloseable: true
     },
     prism: {
       theme: prismThemes.github,

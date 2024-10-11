@@ -2,11 +2,17 @@ import { app, shell } from "electron";
 import fs from "fs";
 import jsonfile from "jsonfile";
 import path from "path";
+import { DISTRIBUTOR, Distributor } from "../shared/buildConstants";
 import { scaleValue } from "../shared/util";
 import { APP_VERSION } from "./Constants";
 
 // Constants
-const BETA_CONFIG: BetaConfig | null = null as BetaConfig | null;
+const BETA_CONFIG: BetaConfig | null = {
+  year: "2025",
+  expiration: new Date(2025, 0, 4),
+  surveyUrl:
+    "https://docs.google.com/forms/d/e/1FAIpQLSe7xxOln2NUO6pNrGQAPAJ5W7HH2dcIfcCYYi0etTQQE5ORwg/viewform?usp=pp_url&entry.1466744914=__version__"
+};
 const BETA_STATE_FILENAME =
   BETA_CONFIG === null ? null : path.join(app.getPath("userData"), "beta-" + BETA_CONFIG.year + ".json");
 
@@ -96,7 +102,7 @@ export function openBetaSurvey(): void {
   shell.openExternal(
     BETA_CONFIG!.surveyUrl.replace(
       "__version__",
-      encodeURIComponent(APP_VERSION + " (" + process.platform + "-" + process.arch + ")")
+      encodeURIComponent(APP_VERSION + "/" + process.platform + "-" + process.arch + "/" + Distributor[DISTRIBUTOR])
     )
   );
   state.surveyStatus = true;

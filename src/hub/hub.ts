@@ -156,12 +156,15 @@ function updateFancyWindow() {
   } else {
     document.body.classList.remove("fancy-side-bar-mac");
   }
-  if (window.platform === "win32" && Number(releaseSplit[releaseSplit.length - 1]) >= 22621) {
-    // Windows 11 22H2
-    document.body.classList.add("fancy-side-bar-win");
-  } else {
-    document.body.classList.remove("fancy-side-bar-win");
-  }
+
+  // Skip background material on Windows until https://github.com/electron/electron/issues/41824 is fixed
+  //
+  // if (window.platform === "win32" && Number(releaseSplit[releaseSplit.length - 1]) >= 22621) {
+  //   // Windows 11 22H2
+  //   document.body.classList.add("fancy-side-bar-win");
+  // } else {
+  //   document.body.classList.remove("fancy-side-bar-win");
+  // }
 }
 
 window.setNt4 = (topic: string, value: any, type: string) => {
@@ -545,6 +548,13 @@ setInterval(() => {
 
 async function handleMainMessage(message: NamedMessage) {
   switch (message.name) {
+    case "show-when-ready":
+      // Wait for DOM updates to finish
+      window.requestAnimationFrame(() => {
+        window.sendMainMessage("show");
+      });
+      break;
+
     case "restore-state":
       restoreState(message.data);
       break;
@@ -755,6 +765,7 @@ async function handleMainMessage(message: NamedMessage) {
         if (historicalSources.length > 0) {
           await historicalSources[0].source.loadAllFields(); // Root NT table is always from the first source
         }
+        clearInterval(mockProgressInterval);
 
         // Start publisher
         publisher?.stop();
@@ -811,6 +822,10 @@ async function handleMainMessage(message: NamedMessage) {
 
     case "new-tab":
       window.tabs.addTab(message.data);
+      break;
+
+    case "new-satellite":
+      window.tabs.newSatellite();
       break;
 
     case "move-tab":

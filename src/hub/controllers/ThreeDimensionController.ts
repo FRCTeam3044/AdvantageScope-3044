@@ -9,6 +9,8 @@ import {
   grabSwerveStates
 } from "../../shared/geometry";
 import {
+  ALLIANCE_KEYS,
+  DRIVER_STATION_KEYS,
   MechanismState,
   getDriverStation,
   getIsRedAlliance,
@@ -184,7 +186,11 @@ export default class ThreeDimensionController implements TabController {
   }
 
   getActiveFields(): string[] {
-    return this.sourceList.getActiveFields();
+    let allianceKeys: string[] = [];
+    if (this.originSetting === "auto") {
+      allianceKeys = ALLIANCE_KEYS;
+    }
+    return [...this.sourceList.getActiveFields(), ...allianceKeys, ...DRIVER_STATION_KEYS];
   }
 
   showTimeline(): boolean {
@@ -510,12 +516,22 @@ export default class ThreeDimensionController implements TabController {
       }
     }
 
+    // Get all robot models
+    let allRobotModels: Set<string> = new Set();
+    let allSources = this.sourceList.getState();
+    allSources.forEach((source) => {
+      if (["robot", "robotLegacy", "ghost", "ghostLegacy", "ghostZebra"].includes(source.type)) {
+        allRobotModels.add(source.options.model);
+      }
+    });
+
     return {
       game: this.GAME_SELECT.value,
       origin: origin,
       objects: objects,
       cameraOverride: cameraOverride,
-      autoDriverStation: getDriverStation(window.log, time!)
+      autoDriverStation: getDriverStation(window.log, time!),
+      allRobotModels: [...allRobotModels]
     };
   }
 }

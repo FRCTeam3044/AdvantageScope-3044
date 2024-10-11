@@ -545,8 +545,9 @@ export default class Sidebar {
       label.appendChild(labelSpan);
       labelSpan.innerText = title;
     }
-    label.style.fontStyle = field.fullKey === null ? "normal" : "italic";
-    label.style.cursor = field.fullKey === null ? "auto" : "grab";
+    if (field.fullKey !== null) {
+      label.classList.add("full-key");
+    }
     if (field.fullKey) {
       {
         let typeWarningSpan = document.createElement("span");
@@ -732,7 +733,7 @@ export default class Sidebar {
 
         // Tuning mode controls
         svg.addEventListener("click", () => {
-          if (!this.isTuningMode) return;
+          if (!svg.classList.contains("tunable")) return;
           let oldValue = circle.getAttributeNS(null, "fill") !== "red";
           let value = !oldValue;
           let liveTime = window.selection.getCurrentLiveTime();

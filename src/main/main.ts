@@ -198,6 +198,10 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
   if (window.isDestroyed()) return;
   let windowId = window.id;
   switch (message.name) {
+    case "show":
+      window.show();
+      break;
+
     case "alert":
       dialog.showMessageBox(window, {
         type: "info",
@@ -726,6 +730,20 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
           })
         );
       }
+
+      menu.append(
+        new MenuItem({
+          type: "separator"
+        })
+      );
+      menu.append(
+        new MenuItem({
+          label: "Help",
+          click() {
+            openSourceListHelp(window, config);
+          }
+        })
+      );
       menu.popup({
         window: window,
         x: coordinates[0],
@@ -1432,7 +1450,7 @@ function downloadSave(files: string[]) {
                         downloadWindow?.destroy();
                         downloadStop();
                         hubWindows[0].focus();
-                        sendMessage(hubWindows[0], "open-files", [savePath]);
+                        sendMessage(hubWindows[0], "open-files", { files: [savePath], merge: false });
                       }
                     });
                 }
@@ -1855,12 +1873,21 @@ function setupMenu() {
             })
         },
         {
-          label: "New Tab (Popup)", // Hidden item to add keyboard shortcut
+          label: "New Tab (Shortcut)", // Hidden item to add keyboard shortcut
           visible: false,
           accelerator: "CmdOrCtrl+T",
           click(_, baseWindow) {
             const window = baseWindow as BrowserWindow | undefined;
             if (window) newTabPopup(window);
+          }
+        },
+        {
+          label: "New Pop-Out",
+          accelerator: "CmdOrCtrl+Shift+T",
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
+            if (window === undefined || !hubWindows.includes(window)) return;
+            sendMessage(window, "new-satellite");
           }
         },
         { type: "separator" },
@@ -2197,12 +2224,15 @@ function createHubWindow(state?: WindowState) {
       if (Number(os.release().split(".")[0]) >= 20) prefs.titleBarStyle = "hiddenInset"; // macOS Big Sur
       break;
     case "win32":
+      // Skip background material on Windows until https://github.com/electron/electron/issues/41824 is fixed
+      //
+      // let releaseSplit = os.release().split(".");
+      // if (Number(releaseSplit[releaseSplit.length - 1]) >= 22621) {
+      //   // Windows 11 22H2
+      //   prefs.backgroundMaterial = "acrylic";
+      // }
+
       prefs.titleBarStyle = "hidden";
-      let releaseSplit = os.release().split(".");
-      if (Number(releaseSplit[releaseSplit.length - 1]) >= 22621) {
-        // Windows 11 22H2
-        prefs.backgroundMaterial = "acrylic";
-      }
       let overlayOptions: TitleBarOverlay = {
         color: "#00000000",
         symbolColor: nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000",
@@ -2280,8 +2310,56 @@ function createHubWindow(state?: WindowState) {
   });
 
   // Show window when loaded
-  window.once("ready-to-show", () => {
-    window.show();
+  let firstLoad = true;
+  let createPorts = () => {
+    const { port1, port2 } = new MessageChannelMain();
+    window.webContents.postMessage("port", null, [port1]);
+    windowPorts[window.id] = port2;
+    port2.on("message", (event) => {
+      handleHubMessage(window, event.data);
+    });
+    port2.start();
+  };
+  createPorts(); // Create ports immediately so messages can be queued
+  window.webContents.on("dom-ready", () => {
+    if (!firstLoad) {
+      createPorts(); // Create ports on reload
+      rlogSockets[window.id]?.destroy(); // Destroy any existing RLOG sockets
+    }
+
+    // Launch dev tools
+    if (firstLoad && !app.isPackaged) {
+      window.webContents.openDevTools();
+    }
+
+    // Init messages
+    sendMessage(window, "set-assets", advantageScopeAssets);
+    sendMessage(window, "set-fullscreen", window.isFullScreen());
+    sendMessage(window, "set-battery", powerMonitor.isOnBatteryPower());
+    sendMessage(window, "set-version", {
+      platform: process.platform,
+      platformRelease: os.release(),
+      appVersion: APP_VERSION
+    });
+    sendMessage(window, "show-update-button", updateChecker.getShouldPrompt());
+    sendMessage(window, "show-feedback-button", isBeta());
+    sendMessage(window, "show-when-ready");
+    sendAllPreferences();
+    sendActiveSatellites();
+    if (fs.existsSync(TYPE_MEMORY_FILENAME)) {
+      sendMessage(window, "restore-type-memory", jsonfile.readFileSync(TYPE_MEMORY_FILENAME));
+    }
+    if (firstLoad && state !== undefined) {
+      sendMessage(window, "restore-state", state.state);
+    } else {
+      let cachedState = stateTracker.getRendererState(window);
+      if (cachedState !== undefined) {
+        sendMessage(window, "restore-state", stateTracker.getRendererState(window));
+      }
+    }
+    firstLoad = false;
+
+    // Beta init
     if (isBeta()) {
       if (isBetaExpired()) {
         dialog
@@ -2321,54 +2399,6 @@ function createHubWindow(state?: WindowState) {
           });
       }
     }
-  });
-  let firstLoad = true;
-  let createPorts = () => {
-    const { port1, port2 } = new MessageChannelMain();
-    window.webContents.postMessage("port", null, [port1]);
-    windowPorts[window.id] = port2;
-    port2.on("message", (event) => {
-      handleHubMessage(window, event.data);
-    });
-    port2.start();
-  };
-  createPorts(); // Create ports immediately so messages can be queued
-  window.webContents.on("dom-ready", () => {
-    if (!firstLoad) {
-      createPorts(); // Create ports on reload
-      rlogSockets[window.id]?.destroy(); // Destroy any existing RLOG sockets
-    }
-
-    // Launch dev tools
-    if (firstLoad && !app.isPackaged) {
-      window.webContents.openDevTools();
-    }
-
-    // Init messages
-    sendMessage(window, "set-assets", advantageScopeAssets);
-    sendMessage(window, "set-fullscreen", window.isFullScreen());
-    sendMessage(window, "set-battery", powerMonitor.isOnBatteryPower());
-    sendMessage(window, "set-version", {
-      platform: process.platform,
-      platformRelease: os.release(),
-      appVersion: APP_VERSION
-    });
-    sendMessage(window, "show-update-button", updateChecker.getShouldPrompt());
-    sendMessage(window, "show-feedback-button", isBeta());
-    sendAllPreferences();
-    sendActiveSatellites();
-    if (fs.existsSync(TYPE_MEMORY_FILENAME)) {
-      sendMessage(window, "restore-type-memory", jsonfile.readFileSync(TYPE_MEMORY_FILENAME));
-    }
-    if (firstLoad && state !== undefined) {
-      sendMessage(window, "restore-state", state.state);
-    } else {
-      let cachedState = stateTracker.getRendererState(window);
-      if (cachedState !== undefined) {
-        sendMessage(window, "restore-state", stateTracker.getRendererState(window));
-      }
-    }
-    firstLoad = false;
   });
   window.on("close", (event) => {
     if (hubExportingIds.has(window.id)) {
@@ -3272,7 +3302,7 @@ app.whenReady().then(() => {
   // Open file if exists
   if (firstOpenPath !== null && targetWindow !== null) {
     targetWindow.webContents.once("dom-ready", () => {
-      sendMessage(targetWindow!, "open-files", [firstOpenPath]);
+      sendMessage(targetWindow!, "open-files", { files: [firstOpenPath], merge: false });
     });
   }
 
@@ -3300,7 +3330,7 @@ app.on("open-file", (_, path) => {
     // Already running, create a new window
     let window = createHubWindow();
     window.webContents.once("dom-ready", () => {
-      sendMessage(window, "open-files", [path]);
+      sendMessage(window, "open-files", { files: [path], merge: false });
     });
   } else {
     // Not running yet, open in first window

@@ -623,6 +623,9 @@ export default class SourceList {
       y > listRect.bottom
     ) {
       this.DRAG_HIGHLIGHT.hidden = true;
+      Array.from(this.LIST.children).forEach((element) => {
+        element.classList.remove("parent-highlight");
+      });
       return;
     }
 
@@ -703,6 +706,9 @@ export default class SourceList {
       this.DRAG_HIGHLIGHT.hidden = false;
     } else {
       this.DRAG_HIGHLIGHT.hidden = true;
+      Array.from(this.LIST.children).forEach((element) => {
+        element.classList.remove("parent-highlight");
+      });
     }
   }
 
@@ -928,6 +934,7 @@ export default class SourceList {
     let keySpan = keyContainer.firstElementChild as HTMLElement;
     keySpan.innerText = state.logKey;
     keySpan.style.textDecoration = this.isFieldAvailable(state) ? "" : "line-through";
+    keyContainer.title = state.logKey;
 
     // Update type width, cloning to a new node in case the controls aren't visible
     let mockTypeName = typeNameElement.cloneNode(true) as HTMLElement;
@@ -995,7 +1002,7 @@ export default class SourceList {
         } else {
           value = getOrDefault(window.log, state.logKey, logType, time, null);
         }
-        if (value !== null) {
+        if (value !== null || logType === LoggableType.Empty) {
           if (typeConfig?.previewType !== undefined) {
             if (typeConfig?.previewType !== null) {
               let numberArrayFormat: "Translation2d" | "Translation3d" | "Pose2d" | "Pose3d" = "Pose3d";

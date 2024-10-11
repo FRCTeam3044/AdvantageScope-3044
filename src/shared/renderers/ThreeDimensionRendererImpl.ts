@@ -595,7 +595,16 @@ export default class ThreeDimensionRendererImpl implements TabRenderer {
     // Update object managers
     this.objectManagers.forEach((entry) => (entry.active = false));
     command.objects.forEach((object) => {
-      let entry = this.objectManagers.find((entry) => !entry.active && entry.type === object.type);
+      let entry = this.objectManagers.find(
+        (entry) =>
+          !entry.active &&
+          entry.type === object.type &&
+          ((object.type !== "robot" && object.type !== "ghost") ||
+            object.model === (entry.manager as RobotManager).getModel())
+      );
+      if (entry === undefined) {
+        entry = this.objectManagers.find((entry) => !entry.active && entry.type === object.type);
+      }
       if (entry === undefined) {
         entry = {
           type: object.type,
@@ -610,6 +619,24 @@ export default class ThreeDimensionRendererImpl implements TabRenderer {
         (entry.manager as RobotManager).newAssets();
       }
       entry.manager.setObjectData(object);
+    });
+    this.objectManagers.forEach((entry) => {
+      if (!entry.active && (entry.type === "robot" || entry.type === "ghost")) {
+        let model = (entry.manager as RobotManager).getModel();
+        if (command.allRobotModels.includes(model)) {
+          entry.active = true;
+          entry.manager.setObjectData({
+            type: entry.type as "robot" | "ghost",
+            model: model,
+            color: "#000000",
+            poses: [],
+            components: [],
+            mechanism: null,
+            visionTargets: [],
+            swerveStates: []
+          });
+        }
+      }
     });
     this.objectManagers
       .filter((entry) => !entry.active)
