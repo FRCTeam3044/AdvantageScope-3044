@@ -1,7 +1,7 @@
 {
   "name": "advantagescope-3044",
   "productName": "AdvantageScope-3044",
-  "version": "4.0.0b1-3044",
+  "version": "4.0.0b2-3044",
   "description": "Robot telemetry application for FRC with extra features for oxconfig (Fork of FRC Team 6328 MechanicalAdvantage's AdvantageScope)",
   "author": {
     "name": "nab138 FRC 3044",
@@ -47,6 +47,7 @@
     "@types/pngjs": "^6.0.5",
     "@types/ssh2": "^1.11.13",
     "@types/three": "^0.168.0",
+    "camera-controls": "^2.9.0",
     "chart.js": "^4.4.0",
     "color-convert": "^2.0.1",
     "electron": "^32.0.2",

@@ -543,21 +543,36 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       }
       break;
 
-    case "ask-playback-speed":
-      const playbackSpeedMenu = new Menu();
+    case "ask-playback-options":
+      const playbackOptionsMenu = new Menu();
       Array(0.25, 0.5, 1, 1.5, 2, 4, 8).forEach((value) => {
-        playbackSpeedMenu.append(
+        playbackOptionsMenu.append(
           new MenuItem({
             label: (value * 100).toString() + "%",
             type: "checkbox",
             checked: value === message.data.speed,
             click() {
-              sendMessage(window, "set-playback-speed", value);
+              sendMessage(window, "set-playback-options", { speed: value, looping: message.data.looping });
             }
           })
         );
       });
-      playbackSpeedMenu.popup({
+      playbackOptionsMenu.append(
+        new MenuItem({
+          type: "separator"
+        })
+      );
+      playbackOptionsMenu.append(
+        new MenuItem({
+          label: "Loop Visible Range",
+          type: "checkbox",
+          checked: message.data.looping,
+          click() {
+            sendMessage(window, "set-playback-options", { speed: message.data.speed, looping: !message.data.looping });
+          }
+        })
+      );
+      playbackOptionsMenu.popup({
         window: window,
         x: message.data.x,
         y: message.data.y
@@ -3289,14 +3304,16 @@ app.whenReady().then(() => {
   }
 
   // Check for file path given as argument
-  let argv = [...process.argv];
-  argv.shift(); // Remove executable path
-  if (!app.isPackaged) {
-    argv.shift(); // Remove bundle path in dev mode
-  }
-  argv = argv.filter((arg) => !arg.startsWith("--"));
-  if (argv.length > 0) {
-    firstOpenPath = argv[0];
+  let fileArgs = process.argv.filter(
+    (x) =>
+      x.endsWith(".wpilog") ||
+      x.endsWith(".rlog") ||
+      x.endsWith(".dslog") ||
+      x.endsWith(".dsevents") ||
+      x.endsWith(".hoot")
+  );
+  if (fileArgs.length > 0) {
+    firstOpenPath = fileArgs[0];
   }
 
   // Open file if exists

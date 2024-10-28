@@ -45,7 +45,7 @@ The legacy number array format for geometry data is now deprecated. See [here](.
 
 Many FRC libraries support the struct format, including WPILib and AdvantageKit. The example code below shows how to log 3D pose data in Java.
 
-<Tabs>
+<Tabs groupId="library">
 <TabItem value="wpilib" label="WPILib" default>
 
 ```java
@@ -135,6 +135,10 @@ Right-click the rendered field view and click "Set FOV..." to adjust the FOV of 
 ### Orbit Field
 
 This is the default camera mode, where the camera can be freely moved relative to the field. **Left-click + drag** rotates the camera, and **right-click + drag** pans the camera. **Scroll** to zoom in and out.
+
+:::tip
+The camera can also be controlled using the keyboard. The **WASD** keys are used to translate and the **IJKL** keys are used to rotate.
+:::
 
 ### Orbit Robot
 

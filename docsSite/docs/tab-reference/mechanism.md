@@ -30,7 +30,7 @@ To get started, drag a `Mechanism2d` to the control pane. Delete a mechanism usi
 
 ## Publishing Data
 
-<Tabs>
+<Tabs groupId="library">
 <TabItem value="wpilib" label="WPILib" default>
 
 To publish mechanism data using WPILib, send a `Mechanism2d` object to NetworkTables (shown below). If data logging is enabled, the mechanisms can also be viewed based the generated WPILOG file.
@@ -47,7 +47,7 @@ To publish mechanism data using AdvantageKit, record a `Mechanism2d` as an outpu
 
 ```java
 Mechanism2d mechanism = new Mechanism2d(3, 3);
-Logger.getInstance().recordOutput("MyMechanism", mechanism);
+Logger.recordOutput("MyMechanism", mechanism);
 ```
 
 </TabItem>

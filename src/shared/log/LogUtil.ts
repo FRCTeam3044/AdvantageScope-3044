@@ -30,7 +30,8 @@ export const AUTONOMOUS_KEYS = [
   "NT:/AdvantageKit/DriverStation/Autonomous",
   "DS:autonomous",
   "NT:/FMSInfo/FMSControlData",
-  "/DSLog/Status/DSTeleop"
+  "/DSLog/Status/DSTeleop",
+  "RobotMode" // Phoenix
 ];
 export const ALLIANCE_KEYS = [
   "/DriverStation/AllianceStation",
@@ -243,6 +244,14 @@ export function getAutonomousData(log: Log): LogValueSetBoolean | null {
         values: tempAutoData.values.map((controlWord) => ((controlWord >> 1) & 1) !== 0)
       };
     }
+  } else if (autonomousKey.endsWith("RobotMode")) {
+    let tempAutoData = log.getString(autonomousKey, -Infinity, Infinity);
+    if (tempAutoData) {
+      autonomousData = {
+        timestamps: tempAutoData.timestamps,
+        values: tempAutoData.values.map((text) => text === "Autonomous")
+      };
+    }
   } else {
     let tempAutoData = log.getBoolean(autonomousKey, -Infinity, Infinity);
     if (!tempAutoData) return null;
@@ -260,7 +269,13 @@ export function getAutonomousData(log: Log): LogValueSetBoolean | null {
 export function getRobotStateRanges(log: Log): { start: number; end?: number; mode: "disabled" | "auto" | "teleop" }[] {
   let enabledData = getEnabledData(log);
   let autoData = getAutonomousData(log);
-  if (!enabledData || !autoData) return [];
+  if (enabledData === null) return [];
+  if (autoData === null) {
+    autoData = {
+      timestamps: [],
+      values: []
+    };
+  }
 
   // Combine enabled and auto data
   let allTimestamps = [...enabledData.timestamps, ...autoData.timestamps];
